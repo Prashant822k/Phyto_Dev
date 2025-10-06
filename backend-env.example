@@ -1,0 +1,13 @@
+# BACKEND ENVIRONMENT VARIABLES (.env in supabase/functions/ folder)
+# These contain sensitive keys and are NOT exposed to the client
+
+# Supabase Configuration (Backend)
+SUPABASE_URL=your_supabase_project_url
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+
+# Cloudflare R2 Configuration (Backend only - sensitive)
+# Cloudflare R2 Configuration (not used in this project)
+
+# ML Model API Configuration (for production)
+# ML_API_URL=your_ml_model_endpoint
+# ML_API_KEY=your_ml_api_key
