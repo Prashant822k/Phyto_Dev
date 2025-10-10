@@ -4,12 +4,26 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Enable PostGIS extension for geographic data
 CREATE EXTENSION IF NOT EXISTS postgis;
 
+-- Golf clubs table
+CREATE TABLE public.golf_clubs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL UNIQUE,
+  description TEXT,
+  location TEXT,
+  contact_email TEXT,
+  contact_phone TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Users table (extends auth.users)
 CREATE TABLE public.users (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT UNIQUE NOT NULL,
   full_name TEXT,
   organization TEXT,
+  role TEXT DEFAULT 'client' CHECK (role IN ('admin', 'client')),
+  golf_club_id UUID REFERENCES public.golf_clubs(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -183,6 +197,63 @@ CREATE POLICY "Users can update own analysis sessions" ON public.analysis_sessio
 CREATE POLICY "Users can delete own analysis sessions" ON public.analysis_sessions
   FOR DELETE USING (auth.uid() = user_id);
 
+-- Golf clubs policies
+CREATE POLICY "Users can view golf clubs" ON public.golf_clubs
+  FOR SELECT USING (true);
+
+CREATE POLICY "Admins can manage golf clubs" ON public.golf_clubs
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM public.users 
+      WHERE id = auth.uid() AND role = 'admin'
+    )
+  );
+
+-- Enhanced users policies with role-based access
+CREATE POLICY "Users can view their own profile" ON public.users
+  FOR SELECT USING (id = auth.uid());
+
+CREATE POLICY "Admins can view all users" ON public.users
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.users 
+      WHERE id = auth.uid() AND role = 'admin'
+    )
+  );
+
+CREATE POLICY "Users can update their own profile" ON public.users
+  FOR UPDATE USING (id = auth.uid());
+
+CREATE POLICY "Admins can manage all users" ON public.users
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM public.users 
+      WHERE id = auth.uid() AND role = 'admin'
+    )
+  );
+
+-- Enhanced images policies with golf club access control
+CREATE POLICY "Users can view images from their golf club" ON public.images
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.users u1, public.users u2
+      WHERE u1.id = auth.uid() 
+      AND u2.id = images.user_id
+      AND (u1.role = 'admin' OR u1.golf_club_id = u2.golf_club_id)
+    )
+  );
+
+CREATE POLICY "Admins can upload images" ON public.images
+  FOR INSERT WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.users 
+      WHERE id = auth.uid() AND role = 'admin'
+    )
+  );
+
+CREATE POLICY "Users can view their own images" ON public.images
+  FOR SELECT USING (user_id = auth.uid());
+
 -- Session images policies
 CREATE POLICY "Users can view session images" ON public.session_images
   FOR SELECT USING (
@@ -212,8 +283,15 @@ CREATE POLICY "Users can delete session images" ON public.session_images
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.users (id, email, full_name)
-  VALUES (NEW.id, NEW.email, NEW.raw_user_meta_data->>'full_name');
+  INSERT INTO public.users (id, email, full_name, organization, role, golf_club_id)
+  VALUES (
+    NEW.id, 
+    NEW.email, 
+    NEW.raw_user_meta_data->>'full_name',
+    NEW.raw_user_meta_data->>'organization',
+    COALESCE(NULLIF(NEW.raw_user_meta_data->>'role', ''), 'client'),
+    NULL -- optional: set via admin later
+  );
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
