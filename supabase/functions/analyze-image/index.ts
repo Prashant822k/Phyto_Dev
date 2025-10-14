@@ -1,7 +1,11 @@
 /// <reference path="../global.d.ts" />
 /// <reference path="../shims.d.ts" />
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+// @ts-ignore - Deno remote import
+import { S3Client, GetObjectCommand } from "https://esm.sh/@aws-sdk/client-s3@3.624.0";
+// @ts-ignore - Deno remote import
+import { getSignedUrl } from "https://esm.sh/@aws-sdk/s3-request-presigner@3.624.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -15,7 +19,7 @@ interface AnalysisRequest {
 }
 
 // Main handler for the Deno function
-serve(async (req) => {
+serve(async (req: Request) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -65,9 +69,27 @@ serve(async (req) => {
       })
       .eq('id', imageId);
 
-    const { data: { publicUrl } } = supabase.storage
-      .from(image.bucket)
-      .getPublicUrl(image.path);
+    let publicUrl: string = '';
+    if (image.bucket === 'r2') {
+      const accountId = Deno.env.get('CLOUDFLARE_R2_ACCOUNT_ID')!;
+      const accessKeyId = Deno.env.get('CLOUDFLARE_R2_ACCESS_KEY_ID')!;
+      const secretAccessKey = Deno.env.get('CLOUDFLARE_R2_SECRET_ACCESS_KEY')!;
+      const bucket = Deno.env.get('CLOUDFLARE_R2_BUCKET_NAME')!;
+      const endpoint = `https://${accountId}.r2.cloudflarestorage.com`;
+      const s3 = new S3Client({ 
+        region: 'auto', 
+        endpoint, 
+        credentials: { accessKeyId, secretAccessKey },
+        forcePathStyle: true,
+      });
+      const getCmd = new GetObjectCommand({ Bucket: bucket, Key: image.path });
+      publicUrl = await getSignedUrl(s3, getCmd, { expiresIn: 900 });
+    } else {
+      const { data: { publicUrl: sbUrl } } = supabase.storage
+        .from(image.bucket)
+        .getPublicUrl(image.path);
+      publicUrl = sbUrl;
+    }
 
     console.log('Processing image URL:', publicUrl);
 

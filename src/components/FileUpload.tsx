@@ -82,15 +82,16 @@ const FileUpload = ({ onFileProcessed, onMultipleFilesProcessed }: FileUploadPro
         console.log('Uploading file with metadata:', { fileName: file.name, metadata });
         const result: UploadResult = await ImageService.uploadTile(file, metadata);
         
-        if (result.success && result.image && result.publicUrl) {
+        if (result.success && result.image) {
+          const signedUrl = await ImageService.getImageUrl(result.image);
           const uploadedFile = {
             name: file.name,
             id: result.image.id,
-            url: result.publicUrl
+            url: signedUrl
           };
           
           setUploadedFiles(prev => [...prev, uploadedFile]);
-          results.push({ imageId: result.image.id, imageUrl: result.publicUrl });
+          results.push({ imageId: result.image.id, imageUrl: signedUrl });
         } else {
           throw new Error(result.error || `Upload failed for ${file.name}`);
         }

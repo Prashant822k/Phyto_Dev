@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { R2Service } from './r2Service'
 import type { Database } from './supabase'
 import { v4 as uuidv4 } from './uuid'
 
@@ -34,7 +35,7 @@ export interface ProcessingStatus {
 
 export class ImageService {
   /**
-   * Upload a PNG tile to Supabase Storage and save metadata to database
+   * Upload a PNG tile to Cloudflare R2 (private) and save metadata to database
    */
   static async uploadTile(
     file: File,
@@ -86,70 +87,20 @@ export class ImageService {
         throw new Error('User not authenticated. Please log in again.')
       }
 
-      // Generate unique filename
+      // Generate R2 key under club/{club_id}/user/{user_id}/
+      const { data: me } = await supabase.from('users').select('id, club_id').eq('id', authenticatedUser.id).single()
       const timestamp = Date.now()
       const filename = `${timestamp}_${file.name}`
-      const filePath = `${authenticatedUser.id}/${filename}`
+      const clubPrefix = me?.club_id ? `club/${me.club_id}` : `user/${authenticatedUser.id}`
+      const key = `${clubPrefix}/user/${authenticatedUser.id}/${filename}`
 
-      console.log('Uploading file to Supabase Storage:', { 
-        bucket: 'raw-images', 
-        filePath, 
-        userId: authenticatedUser.id 
-      })
-
-      // Upload to Supabase Storage with retry
-      let uploadAttempt = 0
-      let uploadData, uploadError
-      
-      while (uploadAttempt < 3) {
-        uploadAttempt++
-        
-        // Upload to Supabase Storage
-        const uploadResponse = await supabase.storage
-          .from('raw-images')
-          .upload(filePath, file, {
-            cacheControl: '3600',
-            upsert: uploadAttempt > 1 // Allow upsert on retry attempts
-          })
-          
-        uploadData = uploadResponse.data
-        uploadError = uploadResponse.error
-        
-        // Debug log to help diagnose upload issues
-        console.debug(`Supabase upload attempt ${uploadAttempt} result:`, { uploadData, uploadError })
-        
-        if (!uploadError) break
-        
-        // Wait before retry
-        if (uploadAttempt < 3) {
-          await new Promise(resolve => setTimeout(resolve, 1000))
-        }
+      // Upload to R2 via edge function (avoids CORS issues)
+      const uploadResult = await R2Service.uploadFile(key, file)
+      if (!uploadResult.success) {
+        throw new Error('R2 upload failed')
       }
-
-      if (uploadError) {
-        // Include the full error message from Supabase for easier debugging in the browser console
-        throw new Error(`Upload failed: ${uploadError.message || JSON.stringify(uploadError)}`)
-      }
-
-      // Get public URL
-      const publicUrlResp = supabase.storage
-        .from('raw-images')
-        .getPublicUrl(filePath)
-
-      // Debug log to inspect the public URL response shape
-      console.debug('getPublicUrl response:', publicUrlResp)
-
-      const { data: { publicUrl } } = publicUrlResp
         
-      const uploadResult = {
-        success: true,
-        url: publicUrl,
-        key: filePath
-      }
-
-      if (!uploadResult.success || !uploadResult.url) {
-        throw new Error('Upload failed')
-      }
+      // Upload succeeded to R2
 
       // Save metadata to database
       const { data: { user }, error: userError } = await supabase.auth.getUser()
@@ -161,7 +112,7 @@ export class ImageService {
         filename: filename,
         original_filename: file.name,
         bucket: 'raw-images',
-        path: filePath,
+        path: key,
         file_size: file.size,
         content_type: file.type,
         lat: metadata.lat || null,
@@ -179,17 +130,14 @@ export class ImageService {
         .single()
 
       if (dbError) {
-        // If database insert fails, clean up the uploaded file
-        await supabase.storage
-          .from('raw-images')
-          .remove([filePath])
+        // If database insert fails, clean up the uploaded object
+        try { await R2Service.deleteObject(key) } catch {}
         throw new Error(`Database error: ${dbError.message}`)
       }
 
       return {
         success: true,
-        image: imageRecord,
-        publicUrl
+        image: imageRecord
       }
     } catch (error) {
       console.error('Upload error:', error)
@@ -316,13 +264,11 @@ export class ImageService {
         throw new Error('Image not found')
       }
 
-      // Delete from storage
-      const { error: storageError } = await supabase.storage
-        .from(image.bucket)
-        .remove([image.path])
-
-      if (storageError) {
-        console.warn('Failed to delete from storage:', storageError.message)
+      // Delete from R2 (edge function enforces admin rights)
+      try {
+        await R2Service.deleteObject(image.path)
+      } catch (e) {
+        console.warn('Failed to delete from R2')
       }
 
       // Delete from database (this will cascade to processing_jobs)
@@ -379,11 +325,9 @@ export class ImageService {
   /**
    * Get public URL for an image
    */
-  static getImageUrl(image: Image): string {
-    const { data: { publicUrl } } = supabase.storage
-      .from(image.bucket)
-      .getPublicUrl(image.path)
-    return publicUrl
+  static async getImageUrl(image: Image): Promise<string> {
+    const { url } = await R2Service.getGetUrl(image.path)
+    return url
   }
 
   /**

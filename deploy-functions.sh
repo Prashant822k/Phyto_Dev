@@ -41,8 +41,16 @@ else
     exit 1
 fi
 
-# Deploy r2-upload function
-# r2-upload function removed: project uses Supabase Storage only (raw-images bucket)
+# Deploy r2-sign function
+echo "📦 Deploying r2-sign function..."
+supabase functions deploy r2-sign
+
+if [ $? -eq 0 ]; then
+    echo "✅ r2-sign function deployed successfully"
+else
+    echo "❌ Failed to deploy r2-sign function"
+    exit 1
+fi
 
 echo "🎉 All functions deployed successfully!"
 echo ""
