@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Upload, File, CheckCircle, AlertCircle, MapPin } from "lucide-react";
@@ -6,6 +6,8 @@ import { useToast } from "@/hooks/use-toast";
 import { ImageService, type UploadResult } from "@/lib/imageService";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { supabase } from "@/lib/supabase";
 
 interface FileUploadProps {
   onFileProcessed: (imageId: string, imageUrl: string) => void;
@@ -21,6 +23,11 @@ const FileUpload = ({ onFileProcessed, onMultipleFilesProcessed }: FileUploadPro
   const [currentUploadIndex, setCurrentUploadIndex] = useState(0);
   const [totalUploads, setTotalUploads] = useState(0);
   
+  // Golf course selection
+  const [golfClubs, setGolfClubs] = useState<Array<{id: string, name: string}>>([]);
+  const [selectedGolfClub, setSelectedGolfClub] = useState<string>("");
+  const [isLoadingClubs, setIsLoadingClubs] = useState(true);
+  
   // Geographic metadata inputs
   const [lat, setLat] = useState<string>("");
   const [lon, setLon] = useState<string>("");
@@ -29,6 +36,36 @@ const FileUpload = ({ onFileProcessed, onMultipleFilesProcessed }: FileUploadPro
   const [tileY, setTileY] = useState<string>("");
   
   const { toast } = useToast();
+
+  // Fetch golf clubs on component mount
+  useEffect(() => {
+    const fetchGolfClubs = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('golf_clubs')
+          .select('id, name')
+          .order('name');
+        
+        if (error) throw error;
+        
+        setGolfClubs(data || []);
+        if (data && data.length > 0) {
+          setSelectedGolfClub(data[0].name);
+        }
+      } catch (error) {
+        console.error('Error fetching golf clubs:', error);
+        toast({
+          title: "Error Loading Golf Courses",
+          description: "Failed to load golf courses. Please refresh the page.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoadingClubs(false);
+      }
+    };
+
+    fetchGolfClubs();
+  }, [toast]);
 
   const validateFile = (file: File): boolean => {
     if (!file.type.includes('image/png')) {
@@ -56,6 +93,16 @@ const FileUpload = ({ onFileProcessed, onMultipleFilesProcessed }: FileUploadPro
     const validFiles = files.filter(validateFile);
     if (validFiles.length === 0) return;
     
+    // Validate golf club selection
+    if (!selectedGolfClub) {
+      toast({
+        title: "Golf Course Required",
+        description: "Please select a golf course before uploading.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setIsProcessing(true);
     setTotalUploads(validFiles.length);
     setCurrentUploadIndex(0);
@@ -76,7 +123,7 @@ const FileUpload = ({ onFileProcessed, onMultipleFilesProcessed }: FileUploadPro
           zoomLevel: zoomLevel ? parseInt(zoomLevel) : undefined,
           tileX: tileX ? parseInt(tileX) : undefined,
           tileY: tileY ? parseInt(tileY) : undefined,
-          // Remove R2 option as we're only using Supabase storage
+          golfCourseName: selectedGolfClub,
         };
         
         console.log('Uploading file with metadata:', { fileName: file.name, metadata });
@@ -155,6 +202,34 @@ const FileUpload = ({ onFileProcessed, onMultipleFilesProcessed }: FileUploadPro
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Golf Course Selection */}
+        {uploadedFiles.length === 0 && (
+          <div className="p-4 bg-primary/10 rounded-lg border-2 border-primary/20">
+            <Label htmlFor="golf-course" className="text-base font-semibold mb-2 block">
+              Select Golf Course *
+            </Label>
+            <Select
+              value={selectedGolfClub}
+              onValueChange={setSelectedGolfClub}
+              disabled={isLoadingClubs}
+            >
+              <SelectTrigger id="golf-course" className="w-full">
+                <SelectValue placeholder="Choose a golf course" />
+              </SelectTrigger>
+              <SelectContent>
+                {golfClubs.map((club) => (
+                  <SelectItem key={club.id} value={club.name}>
+                    {club.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-2">
+              Files will be organized in the folder: <span className="font-mono text-primary">{selectedGolfClub || 'golf-course-name'}</span>
+            </p>
+          </div>
+        )}
+
         {/* Upload Mode Toggle */}
         <div className="flex items-center gap-4 p-4 bg-muted/30 rounded-lg">
           <Label htmlFor="upload-mode">Upload Mode:</Label>

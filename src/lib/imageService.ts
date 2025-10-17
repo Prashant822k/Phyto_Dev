@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import { R2Service } from './r2Service'
 import type { Database } from './supabase'
 import { v4 as uuidv4 } from './uuid'
+import { sanitizeGolfCourseName } from './utils'
 
 
 
@@ -46,6 +47,7 @@ export class ImageService {
       tileX?: number
       tileY?: number
       useR2?: boolean
+      golfCourseName?: string
     }
   ): Promise<UploadResult> {
     try {
@@ -87,12 +89,20 @@ export class ImageService {
         throw new Error('User not authenticated. Please log in again.')
       }
 
-      // Generate R2 key under club/{club_id}/user/{user_id}/
+      // Generate R2 key under golf course folder: {golf_course_name}/
       const { data: me } = await supabase.from('users').select('id, club_id').eq('id', authenticatedUser.id).single()
       const timestamp = Date.now()
       const filename = `${timestamp}_${file.name}`
-      const clubPrefix = me?.club_id ? `club/${me.club_id}` : `user/${authenticatedUser.id}`
-      const key = `${clubPrefix}/user/${authenticatedUser.id}/${filename}`
+      
+      // Use golf course name if provided, otherwise fall back to user-based structure
+      let key: string
+      if (metadata.golfCourseName) {
+        const sanitizedCourseName = sanitizeGolfCourseName(metadata.golfCourseName)
+        key = `${sanitizedCourseName}/${filename}`
+      } else {
+        const clubPrefix = me?.club_id ? `club/${me.club_id}` : `user/${authenticatedUser.id}`
+        key = `${clubPrefix}/user/${authenticatedUser.id}/${filename}`
+      }
 
       // Upload to R2 via edge function (avoids CORS issues)
       const uploadResult = await R2Service.uploadFile(key, file)
@@ -300,6 +310,7 @@ export class ImageService {
       tileX?: number
       tileY?: number
       useR2?: boolean
+      golfCourseName?: string
     },
     onProgress?: (completed: number, total: number) => void
   ): Promise<Array<UploadResult>> {

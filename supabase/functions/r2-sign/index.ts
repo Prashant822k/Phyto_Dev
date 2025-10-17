@@ -127,7 +127,6 @@ serve(async (req) => {
 
     const body: SignedUrlRequest = await req.json();
     const expiresIn = Math.min(Math.max(body.expiresInSeconds ?? 900, 60), 3600);
-    const basePrefix = me.club_id ? `club/${me.club_id}/` : `user/${me.id}/`;
 
     const accountId = Deno.env.get('CLOUDFLARE_R2_ACCOUNT_ID')!;
     const accessKeyId = Deno.env.get('CLOUDFLARE_R2_ACCESS_KEY_ID')!;
@@ -143,7 +142,13 @@ serve(async (req) => {
       case 'getGetUrl': {
         if (body.action === 'getPutUrl') requireAdmin();
         if (!body.key) return new Response(JSON.stringify({ error: 'Missing key' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 });
-        if (me.role !== 'admin' && !body.key.startsWith(basePrefix)) return new Response(JSON.stringify({ error: 'Forbidden' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
+        // Admin can access any path, clients can only access their club's path
+        if (me.role !== 'admin' && me.club_id) {
+          const basePrefix = `club/${me.club_id}/`;
+          if (!body.key.startsWith(basePrefix)) {
+            return new Response(JSON.stringify({ error: 'Forbidden' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
+          }
+        }
         const url = await createAWS4Url(body.action === 'getPutUrl' ? 'PUT' : 'GET', bucket, accountId, body.key, accessKeyId, secretAccessKey, region, expiresIn, body.action === 'getPutUrl' ? 'UNSIGNED-PAYLOAD' : '');
         return new Response(JSON.stringify({ url, key: body.key, method: body.action === 'getPutUrl' ? 'PUT' : 'GET' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
@@ -168,13 +173,16 @@ serve(async (req) => {
       }
 
       case 'listObjects': {
-        const prefix = me.role === 'admin' ? (body.prefix || '') : basePrefix;
+        const prefix = body.prefix || '';
+        // If not admin and has club_id, restrict to club's path
+        const allowedPrefix = me.role === 'admin' ? prefix : (me.club_id ? `club/${me.club_id}/` : `user/${me.id}/`);
+        
         const url = await createAWS4Url('GET', bucket, accountId, '', accessKeyId, secretAccessKey, region, 60, '');
         const resp = await fetch(url);
         const xmlText = await resp.text();
         // Simple parse: list <Key> elements (R2 returns XML)
-        const items = [...xmlText.matchAll(/<Key>(.*?)<\/Key>/g)].map(m => m[1]).filter(k => k.startsWith(prefix));
-        return new Response(JSON.stringify({ items, prefix }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        const items = [...xmlText.matchAll(/<Key>(.*?)<\/Key>/g)].map(m => m[1]).filter(k => k.startsWith(allowedPrefix));
+        return new Response(JSON.stringify({ items, prefix: allowedPrefix }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
       default:
