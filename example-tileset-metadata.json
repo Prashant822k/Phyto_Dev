@@ -1,0 +1,25 @@
+{
+  "name": "Pine Valley Golf Club - Main Course",
+  "description": "High-resolution aerial imagery of the 18-hole championship course with detailed terrain mapping",
+  "bounds": {
+    "minLat": 39.980,
+    "maxLat": 39.995,
+    "minLon": -74.965,
+    "maxLon": -74.945
+  },
+  "center": {
+    "lat": 39.9875,
+    "lon": -74.955
+  },
+  "zoom": {
+    "min": 14,
+    "max": 20,
+    "default": 17
+  },
+  "r2FolderPath": "pine-valley-golf-club/tiles",
+  "tileUrlPattern": "{z}/{x}/{y}.png",
+  "tileSize": 256,
+  "format": "png",
+  "attribution": "© Pine Valley Golf Club"
+}
+

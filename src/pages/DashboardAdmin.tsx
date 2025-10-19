@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import FileUpload from '@/components/FileUpload'
+import TilesetUploader from '@/components/TilesetUploader'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { R2Service } from '@/lib/r2Service'
@@ -11,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { Badge } from '@/components/ui/badge'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
-import { Trash2, UserPlus, Shield, Users, Upload, FileText, Settings } from 'lucide-react'
+import { Trash2, UserPlus, Shield, Users, Upload, FileText, Settings, Map } from 'lucide-react'
 
 const DashboardAdmin = () => {
   const [items, setItems] = useState<Array<{ key?: string, size?: number }>>([])
@@ -262,8 +263,12 @@ const DashboardAdmin = () => {
         </div>
       </div>
 
-      <Tabs defaultValue="upload" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+      <Tabs defaultValue="tiles" className="w-full">
+        <TabsList className="grid w-full grid-cols-6">
+          <TabsTrigger value="tiles" className="flex items-center gap-2">
+            <Map className="h-4 w-4" />
+            Upload Tiles
+          </TabsTrigger>
           <TabsTrigger value="upload" className="flex items-center gap-2">
             <Upload className="h-4 w-4" />
             Upload Files
@@ -285,6 +290,10 @@ const DashboardAdmin = () => {
             Admin Settings
           </TabsTrigger>
         </TabsList>
+        
+        <TabsContent value="tiles">
+          <TilesetUploader />
+        </TabsContent>
         
         <TabsContent value="upload">
           <Card>

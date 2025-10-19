@@ -1,0 +1,11 @@
+{
+  "name": "Pine Valley Golf Club - Main Course",
+  "description": "High-resolution aerial imagery of the championship course",
+  "bounds": [-74.965, 39.980, -74.945, 39.995],
+  "center": [-74.955, 39.9875, 17],
+  "minzoom": 14,
+  "maxzoom": 20,
+  "tileSize": 256,
+  "attribution": "© Pine Valley Golf Club"
+}
+

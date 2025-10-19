@@ -272,6 +272,80 @@ export interface Database {
           added_at?: string
         }
       }
+      golf_course_tilesets: {
+        Row: {
+          id: string
+          golf_club_id: string
+          name: string
+          description: string | null
+          min_lat: number
+          max_lat: number
+          min_lon: number
+          max_lon: number
+          center_lat: number
+          center_lon: number
+          min_zoom: number
+          max_zoom: number
+          default_zoom: number
+          r2_folder_path: string
+          tile_url_pattern: string
+          tile_size: number
+          format: 'png' | 'jpg' | 'webp'
+          attribution: string | null
+          metadata: any | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          golf_club_id: string
+          name: string
+          description?: string | null
+          min_lat: number
+          max_lat: number
+          min_lon: number
+          max_lon: number
+          center_lat: number
+          center_lon: number
+          min_zoom?: number
+          max_zoom?: number
+          default_zoom?: number
+          r2_folder_path: string
+          tile_url_pattern: string
+          tile_size?: number
+          format?: 'png' | 'jpg' | 'webp'
+          attribution?: string | null
+          metadata?: any | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          golf_club_id?: string
+          name?: string
+          description?: string | null
+          min_lat?: number
+          max_lat?: number
+          min_lon?: number
+          max_lon?: number
+          center_lat?: number
+          center_lon?: number
+          min_zoom?: number
+          max_zoom?: number
+          default_zoom?: number
+          r2_folder_path?: string
+          tile_url_pattern?: string
+          tile_size?: number
+          format?: 'png' | 'jpg' | 'webp'
+          attribution?: string | null
+          metadata?: any | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
   }
 }

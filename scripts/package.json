@@ -1,0 +1,14 @@
+{
+  "name": "phyto-tile-uploader",
+  "version": "1.0.0",
+  "description": "Automated tile upload scripts",
+  "main": "upload-tiles.js",
+  "scripts": {
+    "upload": "node upload-tiles.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.621.0",
+    "dotenv": "^16.0.0"
+  }
+}
+
