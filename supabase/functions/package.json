@@ -1,0 +1,13 @@
+{
+  "name": "supabase-functions",
+  "version": "1.0.0",
+  "description": "Supabase Edge Functions",
+  "type": "module",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.58.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.16.5",
+    "typescript": "^5.8.3"
+  }
+}
