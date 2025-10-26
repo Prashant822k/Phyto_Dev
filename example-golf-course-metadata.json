@@ -1,0 +1,24 @@
+{
+  "name": "Example Golf Course - Main Course",
+  "description": "High-resolution aerial imagery of the 18-hole championship course",
+  "bounds": {
+    "minLat": 33.500,
+    "maxLat": 33.510,
+    "minLon": -82.030,
+    "maxLon": -82.020
+  },
+  "center": {
+    "lat": 33.505,
+    "lon": -82.025
+  },
+  "zoom": {
+    "min": 14,
+    "max": 19,
+    "default": 17
+  },
+  "r2FolderPath": "example-golf-course/tiles",
+  "tileUrlPattern": "{z}/{x}/{y}.png",
+  "tileSize": 256,
+  "format": "png",
+  "attribution": "© Example Golf Course"
+}

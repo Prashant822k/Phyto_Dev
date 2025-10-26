@@ -8,23 +8,27 @@ type TilesetInsert = Database['public']['Tables']['golf_course_tilesets']['Inser
 export interface TilesetMetadata {
   name: string
   description?: string
-  bounds: {
+  // Support both formats
+  bounds?: {
     minLat: number
     maxLat: number
     minLon: number
     maxLon: number
-  }
-  center: {
+  } | [number, number, number, number] // [minLon, minLat, maxLon, maxLat]
+  center?: {
     lat: number
     lon: number
-  }
-  zoom: {
+  } | [number, number, number] // [lon, lat, zoom]
+  zoom?: {
     min: number
     max: number
     default: number
   }
-  r2FolderPath: string
-  tileUrlPattern: string
+  // Alternative format (TileJSON style)
+  minzoom?: number
+  maxzoom?: number
+  r2FolderPath?: string
+  tileUrlPattern?: string
   tileSize?: number
   format?: 'png' | 'jpg' | 'webp'
   attribution?: string
@@ -85,21 +89,61 @@ export class TilesetService {
     metadata: TilesetMetadata
   ): Promise<GolfCourseTileset | null> {
     try {
+      // Normalize bounds format
+      let minLat: number, maxLat: number, minLon: number, maxLon: number
+      if (Array.isArray(metadata.bounds)) {
+        // Format: [minLon, minLat, maxLon, maxLat]
+        [minLon, minLat, maxLon, maxLat] = metadata.bounds
+      } else if (metadata.bounds) {
+        // Format: { minLat, maxLat, minLon, maxLon }
+        minLat = metadata.bounds.minLat
+        maxLat = metadata.bounds.maxLat
+        minLon = metadata.bounds.minLon
+        maxLon = metadata.bounds.maxLon
+      } else {
+        throw new Error('Missing bounds in metadata')
+      }
+
+      // Normalize center format
+      let centerLat: number, centerLon: number, defaultZoom: number
+      if (Array.isArray(metadata.center)) {
+        // Format: [lon, lat, zoom]
+        [centerLon, centerLat, defaultZoom] = metadata.center
+      } else if (metadata.center) {
+        // Format: { lat, lon }
+        centerLat = metadata.center.lat
+        centerLon = metadata.center.lon
+        defaultZoom = metadata.zoom?.default || 17
+      } else {
+        // Calculate center from bounds
+        centerLat = (minLat + maxLat) / 2
+        centerLon = (minLon + maxLon) / 2
+        defaultZoom = metadata.zoom?.default || 17
+      }
+
+      // Normalize zoom levels
+      const minZoom = metadata.minzoom || metadata.zoom?.min || 14
+      const maxZoom = metadata.maxzoom || metadata.zoom?.max || 20
+
+      // Generate r2FolderPath from name if not provided
+      const r2FolderPath = metadata.r2FolderPath || 
+        metadata.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '/tiles'
+
       const tilesetData: TilesetInsert = {
         golf_club_id: golfClubId,
         name: metadata.name,
         description: metadata.description,
-        min_lat: metadata.bounds.minLat,
-        max_lat: metadata.bounds.maxLat,
-        min_lon: metadata.bounds.minLon,
-        max_lon: metadata.bounds.maxLon,
-        center_lat: metadata.center.lat,
-        center_lon: metadata.center.lon,
-        min_zoom: metadata.zoom.min,
-        max_zoom: metadata.zoom.max,
-        default_zoom: metadata.zoom.default,
-        r2_folder_path: metadata.r2FolderPath,
-        tile_url_pattern: metadata.tileUrlPattern,
+        min_lat: minLat,
+        max_lat: maxLat,
+        min_lon: minLon,
+        max_lon: maxLon,
+        center_lat: centerLat,
+        center_lon: centerLon,
+        min_zoom: minZoom,
+        max_zoom: maxZoom,
+        default_zoom: defaultZoom,
+        r2_folder_path: r2FolderPath,
+        tile_url_pattern: metadata.tileUrlPattern || '{z}/{x}/{y}.png',
         tile_size: metadata.tileSize || 256,
         format: metadata.format || 'png',
         attribution: metadata.attribution,

@@ -1,22 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { S3Client, GetObjectCommand } from "https://esm.sh/@aws-sdk/client-s3@3.621.0"
-import { getSignedUrl } from "https://esm.sh/@aws-sdk/s3-request-presigner@3.621.0"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Initialize R2 client
-const r2Client = new S3Client({
-  region: Deno.env.get('CLOUDFLARE_R2_REGION') || 'auto',
-  endpoint: `https://${Deno.env.get('CLOUDFLARE_R2_ACCOUNT_ID')}.r2.cloudflarestorage.com`,
-  credentials: {
-    accessKeyId: Deno.env.get('CLOUDFLARE_R2_ACCESS_KEY_ID') || '',
-    secretAccessKey: Deno.env.get('CLOUDFLARE_R2_SECRET_ACCESS_KEY') || '',
-  },
-})
-
+// R2 Public URL - If your bucket has public access
+// Otherwise, you'll need to use R2's public domain or custom domain
+const R2_PUBLIC_URL = Deno.env.get('R2_PUBLIC_URL') || ''
 const BUCKET_NAME = Deno.env.get('CLOUDFLARE_R2_BUCKET_NAME') || 'map-stats-tiles-prod'
 
 serve(async (req) => {
@@ -25,6 +16,9 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders })
   }
 
+  // Note: This function is intentionally public to serve map tiles
+  // No authentication required for tile serving
+  
   try {
     // Extract tile path from URL
     // Expected format: /tile-proxy/{golf-course-name}/tiles/{z}/{x}/{y}.png
@@ -42,17 +36,17 @@ serve(async (req) => {
     
     console.log('Fetching tile:', tilePath)
 
-    // Get the tile from R2
-    const command = new GetObjectCommand({
-      Bucket: BUCKET_NAME,
-      Key: tilePath,
-    })
+    // Construct R2 URL
+    // For now, using public R2 URL format
+    // Format: https://pub-<hash>.r2.dev/<path>
+    const r2Url = R2_PUBLIC_URL 
+      ? `${R2_PUBLIC_URL}/${tilePath}`
+      : `https://${BUCKET_NAME}.r2.dev/${tilePath}`
 
-    // Generate a signed URL (valid for 1 hour)
-    const signedUrl = await getSignedUrl(r2Client, command, { expiresIn: 3600 })
+    console.log('Fetching from R2:', r2Url)
 
     // Fetch the actual tile
-    const tileResponse = await fetch(signedUrl)
+    const tileResponse = await fetch(r2Url)
     
     if (!tileResponse.ok) {
       console.error('Tile not found:', tilePath)

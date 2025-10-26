@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabase';
-import { R2Service } from '@/lib/r2Service';
+import { R2Service } from '@/lib/r2Service'
 import { TilesetService } from '@/lib/tilesetService';
 import { sanitizeGolfCourseName } from '@/lib/utils';
 import { Upload, MapPin, Loader2, CheckCircle, FolderUp } from 'lucide-react';
@@ -163,14 +163,14 @@ const TilesetUploader = () => {
     
     try {
       const sanitizedName = sanitizeGolfCourseName(selectedClubName);
+      const totalFiles = tileFiles.length; // Move outside if block
       
       // If no tiles selected, skip tile upload (metadata only)
-      if (tileFiles.length === 0) {
+      if (totalFiles === 0) {
         setCurrentStep('Skipping tile upload - tiles already in R2');
         setUploadProgress(80);
       } else {
         setCurrentStep('Uploading tiles to R2...');
-        const totalFiles = tileFiles.length;
         
         console.log(`Starting upload of ${totalFiles} tiles...`);
         
@@ -179,36 +179,36 @@ const TilesetUploader = () => {
         let failedUploads = 0;
         
         for (let i = 0; i < tileFiles.length; i += BATCH_SIZE) {
-        const batch = tileFiles.slice(i, Math.min(i + BATCH_SIZE, tileFiles.length));
-        const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-        const totalBatches = Math.ceil(totalFiles / BATCH_SIZE);
-        
-        setCurrentStep(`Uploading batch ${batchNum}/${totalBatches}...`);
-        
-        // Upload batch in parallel
-        const uploadPromises = batch.map(async (file, batchIndex) => {
-          const globalIndex = i + batchIndex;
-          const relativePath = (file as any).webkitRelativePath || file.name;
-          const pathParts = relativePath.split('/');
-          const tilePath = pathParts.slice(-3).join('/');
-          const key = `${sanitizedName}/tiles/${tilePath}`;
+          const batch = tileFiles.slice(i, Math.min(i + BATCH_SIZE, tileFiles.length));
+          const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+          const totalBatches = Math.ceil(totalFiles / BATCH_SIZE);
           
-          try {
-            const uploadResult = await R2Service.uploadFile(key, file);
-            if (!uploadResult.success) {
-              console.error(`Failed to upload ${tilePath}`);
+          setCurrentStep(`Uploading batch ${batchNum}/${totalBatches}...`);
+          
+          // Upload batch in parallel
+          const uploadPromises = batch.map(async (file, batchIndex) => {
+            const globalIndex = i + batchIndex;
+            const relativePath = (file as any).webkitRelativePath || file.name;
+            const pathParts = relativePath.split('/');
+            const tilePath = pathParts.slice(-3).join('/');
+            const key = `${sanitizedName}/tiles/${tilePath}`;
+            
+            try {
+              const uploadResult = await R2Service.uploadFile(key, file);
+              if (!uploadResult.success) {
+                console.error(`Failed to upload ${tilePath}`);
+                return false;
+              }
+              return true;
+            } catch (error) {
+              console.error(`Error uploading ${tilePath}:`, error);
               return false;
             }
-            return true;
-          } catch (error) {
-            console.error(`Error uploading ${tilePath}:`, error);
-            return false;
-          }
-        });
-        
-        const results = await Promise.all(uploadPromises);
-        failedUploads += results.filter(r => !r).length;
-        
+          });
+          
+          const results = await Promise.all(uploadPromises);
+          failedUploads += results.filter(r => !r).length;
+          
           setFilesUploaded(Math.min(i + BATCH_SIZE, totalFiles));
           setUploadProgress(Math.floor(((i + BATCH_SIZE) / totalFiles) * 80));
           

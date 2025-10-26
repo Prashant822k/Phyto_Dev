@@ -1,0 +1,2 @@
+# Local development secrets (copy to .dev.vars)
+# Not needed for production - R2 binding handles auth

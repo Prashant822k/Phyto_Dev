@@ -1,0 +1,16 @@
+name = "map-tiles-upload"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[[r2_buckets]]
+binding = "TILES_BUCKET"
+bucket_name = "map-stats-tiles-prod"
+
+[vars]
+ALLOWED_ORIGINS = "*"
+
+[observability]
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true

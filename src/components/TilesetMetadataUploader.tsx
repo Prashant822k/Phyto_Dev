@@ -8,9 +8,11 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { TilesetService } from '@/lib/tilesetService'
 import { Upload, FileJson, CheckCircle, AlertCircle, Map } from 'lucide-react'
-import type { Database } from '@/lib/supabase'
 
-type GolfClub = Database['public']['Tables']['golf_clubs']['Row']
+interface GolfClub {
+  id: string
+  name: string
+}
 
 interface TilesetMetadataUploaderProps {
   golfClubs: GolfClub[]
@@ -55,40 +57,72 @@ const TilesetMetadataUploader = ({ golfClubs, onSuccess }: TilesetMetadataUpload
 
   // Validate metadata structure
   const validateMetadata = (metadata: any): string | null => {
-    const requiredFields = ['name', 'bounds', 'center', 'zoom', 'r2FolderPath', 'tileUrlPattern']
-    
-    for (const field of requiredFields) {
-      if (!metadata[field]) {
-        return `Missing required field: ${field}`
+    // Required: name and bounds
+    if (!metadata.name) {
+      return 'Missing required field: name'
+    }
+
+    if (!metadata.bounds) {
+      return 'Missing required field: bounds'
+    }
+
+    // Validate bounds (support both formats)
+    if (Array.isArray(metadata.bounds)) {
+      // Format: [minLon, minLat, maxLon, maxLat]
+      if (metadata.bounds.length !== 4) {
+        return 'Bounds array must have 4 values: [minLon, minLat, maxLon, maxLat]'
+      }
+      const [minLon, minLat, maxLon, maxLat] = metadata.bounds
+      if (minLat >= maxLat) {
+        return 'minLat must be less than maxLat'
+      }
+      if (minLon >= maxLon) {
+        return 'minLon must be less than maxLon'
+      }
+    } else if (typeof metadata.bounds === 'object') {
+      // Format: { minLat, maxLat, minLon, maxLon }
+      if (!metadata.bounds.minLat || !metadata.bounds.maxLat || 
+          !metadata.bounds.minLon || !metadata.bounds.maxLon) {
+        return 'Bounds must include minLat, maxLat, minLon, maxLon'
+      }
+      if (metadata.bounds.minLat >= metadata.bounds.maxLat) {
+        return 'minLat must be less than maxLat'
+      }
+      if (metadata.bounds.minLon >= metadata.bounds.maxLon) {
+        return 'minLon must be less than maxLon'
+      }
+    } else {
+      return 'Bounds must be an array or object'
+    }
+
+    // Validate center (optional, can be calculated)
+    if (metadata.center) {
+      if (Array.isArray(metadata.center)) {
+        // Format: [lon, lat, zoom]
+        if (metadata.center.length !== 3) {
+          return 'Center array must have 3 values: [lon, lat, zoom]'
+        }
+      } else if (typeof metadata.center === 'object') {
+        // Format: { lat, lon }
+        if (!metadata.center.lat || !metadata.center.lon) {
+          return 'Center must include lat and lon'
+        }
       }
     }
 
-    // Validate bounds
-    if (!metadata.bounds.minLat || !metadata.bounds.maxLat || 
-        !metadata.bounds.minLon || !metadata.bounds.maxLon) {
-      return 'Bounds must include minLat, maxLat, minLon, maxLon'
-    }
-
-    if (metadata.bounds.minLat >= metadata.bounds.maxLat) {
-      return 'minLat must be less than maxLat'
-    }
-
-    if (metadata.bounds.minLon >= metadata.bounds.maxLon) {
-      return 'minLon must be less than maxLon'
-    }
-
-    // Validate center
-    if (!metadata.center.lat || !metadata.center.lon) {
-      return 'Center must include lat and lon'
-    }
-
-    // Validate zoom
-    if (!metadata.zoom.min || !metadata.zoom.max || !metadata.zoom.default) {
-      return 'Zoom must include min, max, and default'
-    }
-
-    if (metadata.zoom.min >= metadata.zoom.max) {
-      return 'min zoom must be less than max zoom'
+    // Validate zoom (support both formats)
+    if (metadata.zoom) {
+      if (!metadata.zoom.min || !metadata.zoom.max) {
+        return 'Zoom must include min and max'
+      }
+      if (metadata.zoom.min >= metadata.zoom.max) {
+        return 'min zoom must be less than max zoom'
+      }
+    } else if (metadata.minzoom !== undefined && metadata.maxzoom !== undefined) {
+      // TileJSON format
+      if (metadata.minzoom >= metadata.maxzoom) {
+        return 'minzoom must be less than maxzoom'
+      }
     }
 
     return null
@@ -165,33 +199,19 @@ const TilesetMetadataUploader = ({ golfClubs, onSuccess }: TilesetMetadataUpload
   const loadExample = () => {
     const example = {
       name: "Example Golf Course - Main Course",
-      description: "High-resolution aerial imagery of the championship course",
-      bounds: {
-        minLat: 33.500,
-        maxLat: 33.510,
-        minLon: -82.030,
-        maxLon: -82.020
-      },
-      center: {
-        lat: 33.505,
-        lon: -82.025
-      },
-      zoom: {
-        min: 14,
-        max: 19,
-        default: 17
-      },
-      r2FolderPath: "example-golf-course/tiles",
-      tileUrlPattern: "{z}/{x}/{y}.png",
-      tileSize: 256,
-      format: "png",
+      description: "High-resolution orthomosaic tiles for Mapbox overlay",
+      bounds: [5.755898, 51.361755, 5.779088, 51.372146],
+      center: [5.767493, 51.366951, 17],
+      minzoom: 14,
+      maxzoom: 20,
+      tileSize: 512,
       attribution: "© Example Golf Course"
     }
     
     setMetadataJson(JSON.stringify(example, null, 2))
     setUploadStatus({
       type: 'success',
-      message: 'Example metadata loaded. Update the values and submit.'
+      message: 'Example metadata loaded (TileJSON format). Update the values and submit.'
     })
   }
 
@@ -260,8 +280,9 @@ const TilesetMetadataUploader = ({ golfClubs, onSuccess }: TilesetMetadataUpload
             className="font-mono text-sm min-h-[300px]"
           />
           <p className="text-xs text-muted-foreground">
-            Required fields: name, bounds (minLat, maxLat, minLon, maxLon), center (lat, lon), 
-            zoom (min, max, default), r2FolderPath, tileUrlPattern
+            Required: name, bounds. Supports both formats:<br/>
+            • TileJSON: bounds: [minLon, minLat, maxLon, maxLat], center: [lon, lat, zoom], minzoom, maxzoom<br/>
+            • Standard: bounds: {"{minLat, maxLat, minLon, maxLon}"}, center: {"{lat, lon}"}, zoom: {"{min, max, default}"}
           </p>
         </div>
 
@@ -300,12 +321,25 @@ const TilesetMetadataUploader = ({ golfClubs, onSuccess }: TilesetMetadataUpload
 
         {/* Help Section */}
         <div className="border-t pt-4 space-y-2">
-          <h4 className="font-medium text-sm">Need Help?</h4>
-          <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+          <h4 className="font-medium text-sm">Metadata Format</h4>
+          <p className="text-xs text-muted-foreground">
+            Supports TileJSON format (your format) and standard format:
+          </p>
+          <div className="text-xs font-mono bg-muted p-2 rounded">
+            {`{
+  "name": "Course Name",
+  "bounds": [minLon, minLat, maxLon, maxLat],
+  "center": [lon, lat, zoom],
+  "minzoom": 14,
+  "maxzoom": 20,
+  "tileSize": 512,
+  "attribution": "© Your Company"
+}`}
+          </div>
+          <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside mt-2">
             <li>Tiles must be in R2 bucket with z/x/y structure</li>
-            <li>Bounds should match your tile coverage area</li>
+            <li>r2FolderPath auto-generated from name if not provided</li>
             <li>Use Web Mercator projection (EPSG:3857)</li>
-            <li>Zoom levels typically range from 12-20 for golf courses</li>
             <li>See STEP_BY_STEP_MAPBOX_GUIDE.md for detailed instructions</li>
           </ul>
         </div>
