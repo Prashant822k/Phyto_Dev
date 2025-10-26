@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-type Action = 'getPutUrl' | 'getGetUrl' | 'deleteObject' | 'listObjects' | 'uploadFile';
+type Action = 'getPutUrl' | 'getGetUrl' | 'deleteObject' | 'listObjects' | 'uploadFile' | 'getSignedTileUrl' | 'getTile';
 
 interface SignedUrlRequest {
   action: Action;
@@ -142,11 +142,82 @@ serve(async (req) => {
       case 'getGetUrl': {
         if (body.action === 'getPutUrl') requireAdmin();
         if (!body.key) return new Response(JSON.stringify({ error: 'Missing key' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 });
+        
         // Admin can access any path, clients can only access their club's path
         if (me.role !== 'admin' && me.club_id) {
-          const basePrefix = `club/${me.club_id}/`;
-          if (!body.key.startsWith(basePrefix)) {
-            return new Response(JSON.stringify({ error: 'Forbidden' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
+          // Check if it's a tile path (golf-course-name/tiles/z/x/y.png)
+          if (body.key.includes('/tiles/')) {
+            // Extract course name from key (e.g., "golf-course-name" from "golf-course-name/tiles/15/5242/12663.png")
+            const courseName = body.key.split('/tiles/')[0];
+            
+            // Verify this course belongs to user's club
+            // r2_folder_path is stored as "golf-course-name/tiles"
+            const { data: tileset, error: tilesetErr } = await supabase
+              .from('golf_course_tilesets')
+              .select('golf_club_id, r2_folder_path')
+              .eq('r2_folder_path', `${courseName}/tiles`)
+              .single();
+            
+            console.log('Tileset lookup:', { courseName, tileset, tilesetErr, userClubId: me.club_id });
+            
+            if (tilesetErr || !tileset || tileset.golf_club_id !== me.club_id) {
+              return new Response(JSON.stringify({ 
+                error: 'Forbidden - Course not in your club',
+                debug: { courseName, found: !!tileset, userClubId: me.club_id, tilesetClubId: tileset?.golf_club_id }
+              }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
+            }
+          } else {
+            // For non-tile paths, check multiple valid path patterns
+            const basePrefix = `club/${me.club_id}/`;
+            const userPrefix = `user/${me.id}/`;
+            
+            // Check if path starts with valid club prefix or user prefix
+            if (!body.key.startsWith(basePrefix) && !body.key.startsWith(userPrefix)) {
+              // Path doesn't use club or user prefix, check other patterns
+              const segments = body.key.split('/');
+              const firstSegment = segments[0];
+              
+              // Check if first segment is the user's ID (UUID format paths)
+              if (firstSegment === me.id) {
+                // User can access their own files
+                console.log('Access granted: user owns this file');
+              } else if (segments.length >= 2) {
+                // Try to find if it's a golf course image
+                const potentialCourseName = firstSegment;
+                
+                // Check if there's a tileset with this course name belonging to user's club
+                const { data: tileset } = await supabase
+                  .from('golf_course_tilesets')
+                  .select('golf_club_id')
+                  .eq('r2_folder_path', `${potentialCourseName}/tiles`)
+                  .single();
+                
+                // If tileset found and belongs to user's club, grant access
+                if (tileset && tileset.golf_club_id === me.club_id) {
+                  console.log('Access granted: golf course belongs to user club');
+                } else {
+                  // Check if this file belongs to the user by looking up in images table
+                  const { data: imageRecord } = await supabase
+                    .from('images')
+                    .select('user_id, id')
+                    .eq('path', body.key)
+                    .single();
+                  
+                  if (imageRecord && imageRecord.user_id === me.id) {
+                    // User owns this image
+                    console.log('Access granted: user owns this image via images table');
+                  } else {
+                    return new Response(JSON.stringify({ 
+                      error: 'Forbidden - Invalid path',
+                      debug: { key: body.key, userClubId: me.club_id }
+                    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
+                  }
+                }
+              } else {
+                // Invalid path structure
+                return new Response(JSON.stringify({ error: 'Forbidden - Invalid path' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
+              }
+            }
           }
         }
         const url = await createAWS4Url(body.action === 'getPutUrl' ? 'PUT' : 'GET', bucket, accountId, body.key, accessKeyId, secretAccessKey, region, expiresIn, body.action === 'getPutUrl' ? 'UNSIGNED-PAYLOAD' : '');
@@ -174,8 +245,31 @@ serve(async (req) => {
 
       case 'listObjects': {
         const prefix = body.prefix || '';
-        // If not admin and has club_id, restrict to club's path
-        const allowedPrefix = me.role === 'admin' ? prefix : (me.club_id ? `club/${me.club_id}/` : `user/${me.id}/`);
+        let allowedPrefix = prefix;
+        
+        // If not admin, validate the requested prefix
+        if (me.role !== 'admin') {
+          // Check if requesting a golf course tile path
+          if (prefix.includes('/tiles/') || prefix.endsWith('/tiles')) {
+            const courseName = prefix.split('/tiles')[0];
+            
+            // Verify this course belongs to user's club
+            const { data: tileset } = await supabase
+              .from('golf_course_tilesets')
+              .select('golf_club_id')
+              .eq('r2_folder_path', `${courseName}/tiles`)
+              .single();
+            
+            if (!tileset || tileset.golf_club_id !== me.club_id) {
+              // User doesn't have access to this course, return empty list
+              return new Response(JSON.stringify({ items: [], prefix: '' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+            // Access granted - use the requested prefix
+          } else if (!prefix.startsWith(`club/${me.club_id}/`) && !prefix.startsWith(`user/${me.id}/`) && prefix !== '') {
+            // Invalid prefix, restrict to user's club
+            allowedPrefix = me.club_id ? `club/${me.club_id}/` : `user/${me.id}/`;
+          }
+        }
         
         const url = await createAWS4Url('GET', bucket, accountId, '', accessKeyId, secretAccessKey, region, 60, '');
         const resp = await fetch(url);
@@ -183,6 +277,93 @@ serve(async (req) => {
         // Simple parse: list <Key> elements (R2 returns XML)
         const items = [...xmlText.matchAll(/<Key>(.*?)<\/Key>/g)].map(m => m[1]).filter(k => k.startsWith(allowedPrefix));
         return new Response(JSON.stringify({ items, prefix: allowedPrefix }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      case 'getSignedTileUrl': {
+        // Get signed URL for a specific tile with club-level access control
+        if (!body.key) return new Response(JSON.stringify({ error: 'Missing key' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 });
+        
+        // Extract course ID from key (format: courseId/tiles/z/x/y.png)
+        const courseId = body.key.split('/')[0];
+        
+        // Verify user has access to this tileset
+        const { data: tileset, error: tilesetErr } = await supabase
+          .from('golf_course_tilesets')
+          .select('golf_club_id')
+          .eq('r2_folder_path', `${courseId}/tiles`)
+          .single();
+        
+        if (tilesetErr || !tileset) {
+          return new Response(JSON.stringify({ error: 'Tileset not found' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 });
+        }
+        
+        // Check access: admin OR same club
+        if (me.role !== 'admin' && tileset.golf_club_id !== me.club_id) {
+          return new Response(JSON.stringify({ error: 'Access denied to this tileset' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
+        }
+        
+        // Generate signed URL
+        const signedUrl = await createAWS4Url('GET', bucket, accountId, body.key, accessKeyId, secretAccessKey, region, expiresIn, '');
+        return new Response(JSON.stringify({ url: signedUrl }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      case 'getTile': {
+        // Direct tile serving with authentication (for Mapbox tile URLs)
+        if (!body.key) return new Response(JSON.stringify({ error: 'Missing key' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 });
+        
+        // Extract course ID from key
+        const courseId = body.key.split('/')[0];
+        
+        console.log('getTile - courseId:', courseId, 'key:', body.key);
+        
+        // Verify access
+        const { data: tileset, error: tilesetErr } = await supabase
+          .from('golf_course_tilesets')
+          .select('golf_club_id')
+          .eq('r2_folder_path', `${courseId}/tiles`)
+          .single();
+        
+        console.log('getTile - tileset:', tileset, 'error:', tilesetErr, 'userClubId:', me.club_id);
+        
+        if (tilesetErr || !tileset) {
+          console.error('getTile - Tileset not found for:', courseId);
+          return new Response('Tileset not found', { status: 404, headers: corsHeaders });
+        }
+        
+        if (me.role !== 'admin' && tileset.golf_club_id !== me.club_id) {
+          console.error('getTile - Access denied. User club:', me.club_id, 'Tileset club:', tileset.golf_club_id);
+          return new Response('Access denied', { status: 403, headers: corsHeaders });
+        }
+        
+        // Fetch tile from R2 using public R2.dev URL
+        // The authentication happens at the edge function level, not via AWS4 signatures
+        const r2PublicDomain = Deno.env.get('CLOUDFLARE_R2_PUBLIC_DOMAIN') || 'pub-9cb97b1482d04e95afc343b2b255c0ee.r2.dev';
+        const tileUrl = `https://${r2PublicDomain}/${body.key}`;
+        
+        console.log('getTile - Fetching from R2, key:', body.key);
+        console.log('getTile - Using public R2 URL:', tileUrl);
+        
+        const tileResp = await fetch(tileUrl);
+        
+        console.log('getTile - R2 response status:', tileResp.status, 'ok:', tileResp.ok);
+        
+        if (!tileResp.ok) {
+          const errorText = await tileResp.text();
+          console.error('getTile - R2 error response:', errorText);
+          console.error('getTile - Tile not found in R2:', body.key, 'status:', tileResp.status);
+          return new Response('Tile not found', { status: 404, headers: corsHeaders });
+        }
+        
+        const tileData = await tileResp.arrayBuffer();
+        console.log('getTile - Successfully fetched tile, size:', tileData.byteLength, 'bytes');
+        
+        return new Response(tileData, {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'image/png',
+            'Cache-Control': 'public, max-age=31536000, immutable',
+          },
+        });
       }
 
       default:

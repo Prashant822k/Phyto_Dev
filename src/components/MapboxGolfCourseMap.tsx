@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { MapPin, Layers, ZoomIn, ZoomOut, Maximize2, AlertCircle } from 'lucide-react';
 import { TilesetService } from '@/lib/tilesetService';
 import { R2Service } from '@/lib/r2Service';
+import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/supabase';
 
 type GolfCourseTileset = Database['public']['Tables']['golf_course_tilesets']['Row'];
@@ -104,9 +105,22 @@ const MapboxGolfCourseMap = ({
       map.current.on('load', async () => {
         if (!map.current || !tileset) return;
 
-        // Use Supabase edge function as tile proxy
+        // Get auth token for authenticated tile access
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          console.error('No active session for tile loading');
+          setError('Authentication required to load tiles');
+          return;
+        }
+
+        // Extract course ID from r2_folder_path (format: "course-name/tiles")
+        const courseId = tileset.r2_folder_path.split('/')[0];
+        
+        // Use authenticated tile-proxy with token
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const tileUrlTemplate = `${supabaseUrl}/functions/v1/tile-proxy/${tileset.r2_folder_path}/${tileset.tile_url_pattern}`;
+        const tileUrlTemplate = `${supabaseUrl}/functions/v1/tile-proxy?courseId=${courseId}&z={z}&x={x}&y={y}&token=${session.access_token}`;
+        
+        console.log('Loading tiles with URL pattern:', tileUrlTemplate.replace(session.access_token, 'TOKEN'));
         
         map.current!.addSource('golf-course-tiles', {
           type: 'raster',

@@ -32,10 +32,12 @@ const DashboardClient = () => {
         setGolfClubName(profile.golf_clubs?.name || '')
       }
 
-      // Fetch images
+      // Fetch images - only show images uploaded by the current user
+      // (clients shouldn't see other users' images)
       const { data, error } = await supabase
         .from('images')
         .select('*')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
       
       if (!error && data) setImages(data)

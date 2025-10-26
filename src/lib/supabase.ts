@@ -47,6 +47,11 @@ const initAuth = async () => {
 // Initialize auth immediately
 initAuth()
 
+// Make supabase available globally for testing in browser console
+if (typeof window !== 'undefined') {
+  (window as any).supabase = supabase;
+}
+
 // Database types
 export interface Database {
   public: {
