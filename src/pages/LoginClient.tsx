@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
-import { Users } from 'lucide-react'
+import { Users, MapPin, ArrowLeft, Eye, EyeOff } from 'lucide-react'
 
 const LoginClient = () => {
   const [email, setEmail] = useState('')
@@ -14,6 +14,7 @@ const LoginClient = () => {
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
   const { toast } = useToast()
+  const [showPassword, setShowPassword] = useState(false)
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -23,11 +24,6 @@ const LoginClient = () => {
       if (error) throw error
       const userId = data.user?.id
       if (!userId) throw new Error('No user')
-      // Require verified email
-      if (!data.user?.email_confirmed_at) {
-        await supabase.auth.signOut()
-        throw new Error('Please verify your email before signing in. Check your inbox for the verification link.')
-      }
       const { data: me } = await supabase.from('users').select('role, club_id').eq('id', userId).single()
       if (me?.role !== 'client') {
         throw new Error('This account is not authorized for golf club access')
@@ -45,39 +41,61 @@ const LoginClient = () => {
     }
   }
 
+  const handleForgotPassword = async () => {
+    if (!email) {
+      toast({ title: 'Enter your email', description: 'Please type your email to receive a reset link.' })
+      return
+    }
+    try {
+      const redirectTo = `${window.location.origin}/login-client`
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
+      if (error) throw error
+      toast({ title: 'Reset link sent', description: `We emailed a reset link to ${email}` })
+    } catch (e) {
+      toast({ title: 'Reset failed', description: e instanceof Error ? e.message : 'Please try again later', variant: 'destructive' })
+    }
+  }
+
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-teal-400 via-teal-500 to-teal-600">
-      <div className="grid grid-cols-1 md:grid-cols-2 min-h-screen">
-        {/* Left branding panel */}
-        <div className="relative hidden md:flex flex-col items-center justify-center text-white px-8">
-          <div className="w-56 h-56 rounded-full bg-white flex items-center justify-center shadow-lg overflow-hidden">
-            <img src="/phytomaps.jpg" alt="PhytoMaps" className="w-full h-full object-contain p-2" />
+    <main
+      className="min-h-screen w-full relative"
+      style={{
+        backgroundImage: 'linear-gradient(135deg, #009688, #00bfa5)',
+        fontFamily: "Inter, Poppins, ui-sans-serif, system-ui, -apple-system"
+      }}
+    >
+      {/* Admin link bottom-left */}
+      <div className="absolute left-4 bottom-3 text-gray-200 text-sm">
+        <Link to="/login-admin" className="hover:underline transition-colors duration-200 ease-in-out">Admin</Link>
+      </div>
+
+      <section className="mx-auto max-w-7xl px-6 py-10 min-h-screen grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
+        {/* Left: Logo + tagline */}
+        <div className="flex flex-col items-center text-center">
+          <div className="w-64 h-64 rounded-full bg-white shadow-2xl flex items-center justify-center overflow-hidden">
+            <img
+              src="/logo-phytomaps.jpg"
+              alt="PhytoMaps logo"
+              className="w-56 h-56 object-contain"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/placeholder.svg' }}
+            />
           </div>
-          <p className="mt-8 text-center text-white/90 text-lg">
+          <div className="mt-4 text-white text-2xl font-semibold drop-shadow-sm text-center">PhytoMaps</div>
+          <p className="mt-6 text-white text-lg font-medium drop-shadow-sm text-center">
             Golf Course Mapping & Analysis Portal
           </p>
-          <Link
-            to="/login-admin"
-            className="absolute left-4 bottom-4 text-sm text-white/90 hover:text-white underline"
-          >
-            Admin
-          </Link>
         </div>
 
-        {/* Right login card */}
-        <div className="flex items-center justify-center p-6 md:p-8">
-          <Card className="w-full max-w-md shadow-xl">
-            <CardHeader>
-              <div className="mx-auto w-12 h-12 bg-teal-100 rounded-full flex items-center justify-center mb-2">
-                <Users className="h-6 w-6 text-teal-600" />
-              </div>
-              <CardTitle className="text-center">Client Access</CardTitle>
-              <CardDescription className="text-center">
-                Sign in to view your course data
-              </CardDescription>
+        {/* Right: Login Card */}
+        <div className="flex justify-center">
+          <Card className="w-full max-w-[420px] shadow-xl hover:shadow-2xl transition-shadow duration-200 rounded-2xl border border-gray-100">
+            <CardHeader className="space-y-2 text-center px-8 pt-8">
+              <div className="mx-auto w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-xl">👤</div>
+              <CardTitle className="text-xl">Client Access</CardTitle>
+              <CardDescription>Sign in to view your course data</CardDescription>
             </CardHeader>
-            <CardContent>
-              <form onSubmit={handleLogin} className="space-y-4">
+            <CardContent className="px-8 pb-8">
+              <form onSubmit={handleLogin} className="space-y-4" aria-label="Client sign in form">
                 <div className="space-y-2">
                   <Label htmlFor="email">Email Address</Label>
                   <Input
@@ -87,32 +105,54 @@ const LoginClient = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
+                    className="rounded-full h-11"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="password">Password</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Enter your password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      className="rounded-full h-11 pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-700"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                  </div>
                 </div>
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? 'Signing In...' : 'Sign In'}
+                <Button type="submit" className="w-full text-white bg-[#009688] hover:bg-[#00897b] transition-colors duration-200 ease-in-out rounded-full h-11" disabled={loading}>
+                  {loading ? 'Signing in...' : 'Sign In'}
                 </Button>
-                <div className="flex items-center justify-between text-sm">
-                  <Link to="/forgot-password" className="text-teal-700 hover:text-teal-800 hover:underline">Forgot Password?</Link>
-                  <Link to="/register" className="text-teal-700 hover:text-teal-800 hover:underline">Request Access</Link>
-                </div>
               </form>
+              <div className="flex items-center justify-between mt-3 text-sm">
+                <button type="button" onClick={handleForgotPassword} className="text-sky-700 hover:underline transition-colors duration-200 ease-in-out">
+                  Forgot Password?
+                </button>
+                <Link to="/signup" className="text-sky-700 hover:underline transition-colors duration-200 ease-in-out">
+                  New Registration
+                </Link>
+              </div>
+              <div className="mt-2 text-center text-sm text-gray-600">
+                Don’t have an account?{' '}
+                <Link to="/signup" className="text-sky-700 hover:underline transition-colors duration-200 ease-in-out">
+                  New Registration
+                </Link>
+              </div>
             </CardContent>
           </Card>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   )
 }
 

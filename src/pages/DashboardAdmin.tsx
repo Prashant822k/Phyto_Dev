@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import BulkTilesUpload from '@/components/admin/BulkTilesUpload'
+import FileUpload from '@/components/FileUpload'
+import TilesetUploader from '@/components/TilesetUploader'
+import TilesetMetadataUploader from '@/components/TilesetMetadataUploader'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { R2Service } from '@/lib/r2Service'
@@ -11,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { Badge } from '@/components/ui/badge'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
-import { Trash2, UserPlus, Shield, Users, Upload, FileText, Settings } from 'lucide-react'
+import { Trash2, UserPlus, Shield, Users, Upload, FileText, Settings, Map } from 'lucide-react'
 
 const DashboardAdmin = () => {
   const [items, setItems] = useState<Array<{ key?: string, size?: number }>>([])
@@ -262,11 +264,19 @@ const DashboardAdmin = () => {
         </div>
       </div>
 
-      <Tabs defaultValue="upload" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+      <Tabs defaultValue="tiles" className="w-full">
+        <TabsList className="grid w-full grid-cols-6">
+          <TabsTrigger value="tiles" className="flex items-center gap-2">
+            <Map className="h-4 w-4" />
+            Upload Tiles
+          </TabsTrigger>
           <TabsTrigger value="upload" className="flex items-center gap-2">
             <Upload className="h-4 w-4" />
-            Upload
+            Upload Files
+          </TabsTrigger>
+          <TabsTrigger value="files" className="flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Manage Files
           </TabsTrigger>
           <TabsTrigger value="clubs" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
@@ -282,10 +292,60 @@ const DashboardAdmin = () => {
           </TabsTrigger>
         </TabsList>
         
-        <TabsContent value="upload">
+        <TabsContent value="tiles">
           <div className="space-y-6">
-            <BulkTilesUpload />
+            {/* Tileset Metadata Uploader - For adding metadata to existing tiles */}
+            <TilesetMetadataUploader 
+              golfClubs={clubs} 
+              onSuccess={() => {
+                toast({
+                  title: 'Success',
+                  description: 'Tileset metadata uploaded successfully!'
+                })
+              }}
+            />
+            
+            {/* Tileset File Uploader - For uploading actual tile files */}
+            <TilesetUploader />
           </div>
+        </TabsContent>
+        
+        <TabsContent value="upload">
+          <Card>
+            <CardHeader>
+              <CardTitle>Admin: Upload Tiles</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <FileUpload onFileProcessed={() => load()} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="files">
+          <Card>
+            <CardHeader>
+              <CardTitle>All Files in R2</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {items.map((i, idx) => (
+                  <div key={idx} className="flex items-center justify-between">
+                    <span className="truncate max-w-[70%]">{i.key}</span>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={async () => {
+                          if (!i.key) return
+                          await R2Service.deleteObject(i.key)
+                          load()
+                        }}
+                      >Delete</Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
         
         <TabsContent value="clubs">
@@ -570,7 +630,7 @@ const DashboardAdmin = () => {
                     <li>Create golf clubs in the "Manage Clubs" tab</li>
                     <li>Assign users to clubs in the "Manage Users" tab</li>
                     <li>Upload agricultural data in the "Upload Files" tab</li>
-                    <li>Upload PNG tiles in bulk in the "Upload Tiles" tab</li>
+                    <li>Monitor system activity in the "Manage Files" tab</li>
                   </ol>
                 </div>
               </CardContent>

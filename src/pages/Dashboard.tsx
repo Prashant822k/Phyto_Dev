@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { MapPin } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import FileUpload from "@/components/FileUpload";
 import InteractiveMap from "@/components/InteractiveMap";
-import { useLocation } from "react-router-dom";
 
 interface DashboardProps {
   onLogout: () => void;
@@ -13,14 +12,6 @@ interface DashboardProps {
 const Dashboard = ({ onLogout }: DashboardProps) => {
   const [processedImageId, setProcessedImageId] = useState<string | null>(null);
   const [processedImageUrl, setProcessedImageUrl] = useState<string | null>(null);
-  const location = useLocation() as any;
-
-  useEffect(() => {
-    if (location && location.state && (location.state.imageId || location.state.imageUrl)) {
-      setProcessedImageId(location.state.imageId ?? null);
-      setProcessedImageUrl(location.state.imageUrl ?? null);
-    }
-  }, [location]);
 
   return (
     <div className="min-h-screen bg-background">

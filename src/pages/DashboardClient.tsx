@@ -1,233 +1,147 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { R2Service } from '@/lib/r2Service'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import MapboxViewer, { RasterTileSource } from '@/components/MapboxViewer'
-
-type UserProfile = {
-  full_name?: string | null
-  organization?: string | null
-}
-
-type TileRow = {
-  id: string
-  user_id: string
-  tile_url: string
-  latitude?: number | null
-  longitude?: number | null
-  zoom?: number | null
-}
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { ImageService } from '@/lib/imageService'
+import MapboxGolfCourseMap from '@/components/MapboxGolfCourseMap'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { MapPin, Image as ImageIcon } from 'lucide-react'
 
 const DashboardClient = () => {
-  const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [tiles, setTiles] = useState<RasterTileSource[]>([])
-  const [center, setCenter] = useState<[number, number] | undefined>(undefined)
-  const [startZoom, setStartZoom] = useState<number | undefined>(undefined)
-  const [hasDbTiles, setHasDbTiles] = useState<boolean>(false)
-  const [opacity, setOpacity] = useState<number>(0.9)
-  const [attribution, setAttribution] = useState<string | undefined>(undefined)
-  const [title, setTitle] = useState<string | undefined>(undefined)
-  const [subtitle, setSubtitle] = useState<string | undefined>(undefined)
-  const [clubName, setClubName] = useState<string | undefined>(undefined)
+  const [images, setImages] = useState<Array<any>>([])
+  const [golfClubId, setGolfClubId] = useState<string | null>(null)
+  const [golfClubName, setGolfClubName] = useState<string>('')
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-          window.location.href = '/login-client'
-          return
-        }
+  const load = async () => {
+    setLoading(true)
+    try {
+      // Get current user and their golf club
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
 
-        // Fetch profile from users table
-        const { data: userRow } = await supabase
-          .from('users')
-          .select('full_name, organization, club_id')
-          .eq('id', user.id)
-          .single()
-        // Fallback to auth metadata if table row or fields are missing
-        const meta = user.user_metadata || {}
-        const resolvedFullName = userRow?.full_name ?? meta.full_name ?? null
-        setProfile({ full_name: resolvedFullName, organization: userRow?.organization ?? meta.organization ?? null })
+      // Get user's profile to find their club_id
+      const { data: profile } = await supabase
+        .from('users')
+        .select('club_id, golf_clubs(id, name)')
+        .eq('id', user.id)
+        .single()
 
-        // If users table is missing, upsert a minimal profile from metadata (best-effort)
-        if (!userRow || !userRow.full_name || !userRow.organization) {
-          try {
-            await supabase
-              .from('users')
-              .upsert({
-                id: user.id,
-                email: user.email,
-                full_name: resolvedFullName,
-                organization: userRow?.organization ?? meta.organization ?? null,
-                role: 'client'
-              }, { onConflict: 'id' })
-          } catch {
-            // Ignore failures due to RLS; UI already has metadata fallback
-          }
-        }
-
-        // Determine club and course source configuration
-        let course: string | undefined
-        let tileset: any | null = null
-        if (userRow?.club_id) {
-          const { data: club } = await supabase.from('golf_clubs').select('name').eq('id', userRow.club_id).single()
-          course = club?.name || undefined
-          if (course) setClubName(course)
-          const { data: ts } = await supabase.from('golf_course_tilesets').select('code, name, minzoom, maxzoom, tile_size, center, bounds, attribution').eq('club_id', userRow.club_id).single()
-          tileset = ts || null
-        } else {
-          course = (userRow?.organization || meta.organization) as string | undefined
-          if (course) setClubName(course)
-        }
-
-        if ((course || tileset) && import.meta.env.VITE_SUPABASE_URL) {
-          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
-          const { data: sessionData } = await supabase.auth.getSession()
-          const token = sessionData.session?.access_token
-          const tokenParam = token ? `&token=${encodeURIComponent(token)}` : ''
-          const courseKey = (tileset?.code as string | undefined) || (course as string)
-          const proxyUrl = `${supabaseUrl}/functions/v1/tiles-proxy?golfCourse=${encodeURIComponent(courseKey)}&z={z}&x={x}&y={y}${tokenParam}`
-          // Try to load metadata.json from R2 via signed URL
-          const toSafe = (name: string) => name
-            .toLowerCase()
-            .replace(/\.{2,}/g, '')
-            .replace(/[\/\_]/g, '-')
-            .replace(/\s+/g, '-')
-            .replace(/[^a-z0-9\-]/g, '')
-            .replace(/-+/g, '-')
-            .replace(/^-|-$/g, '')
-
-          const safe = toSafe(courseKey)
-          const metadataKeyCandidates = [
-            `${safe}/metadata.json`,
-            `course/${safe}/metadata.json`,
-            `${courseKey}/metadata.json`,
-          ]
-
-          let meta: any | null = tileset ? {
-            tileSize: typeof tileset.tile_size === 'number' ? tileset.tile_size : undefined,
-            minzoom: typeof tileset.minzoom === 'number' ? tileset.minzoom : undefined,
-            maxzoom: typeof tileset.maxzoom === 'number' ? tileset.maxzoom : undefined,
-            center: Array.isArray(tileset.center) ? tileset.center : undefined,
-            bounds: Array.isArray(tileset.bounds) ? tileset.bounds : undefined,
-            name: tileset.name || courseKey,
-            attribution: tileset.attribution || undefined,
-          } : null
-          for (const key of metadataKeyCandidates) {
-            try {
-              const { url } = await R2Service.getGetUrl(key)
-              const resp = await fetch(url)
-              if (resp.ok) {
-                meta = await resp.json()
-                break
-              }
-            } catch {}
-          }
-
-          // Apply metadata if available
-          if (meta) {
-            const tileSize = typeof meta.tileSize === 'number' ? meta.tileSize : 512
-            const minzoom = typeof meta.minzoom === 'number' ? meta.minzoom : 0
-            const maxzoom = typeof meta.maxzoom === 'number' ? meta.maxzoom : 22
-            setTitle(typeof meta.name === 'string' ? meta.name : courseKey)
-            setSubtitle(typeof meta.description === 'string' ? meta.description : undefined)
-            setAttribution(typeof meta.attribution === 'string' ? meta.attribution : undefined)
-            setHasDbTiles(true)
-            // Prefer center [lon, lat, zoom]
-            if (Array.isArray(meta.center) && meta.center.length >= 2) {
-              const [lon, lat] = meta.center
-              const zVal = meta.center[2]
-              setCenter([Number(lon), Number(lat)])
-              if (typeof zVal === 'number') setStartZoom(zVal)
-            } else if (Array.isArray(meta.bounds) && meta.bounds.length === 4) {
-              // Use bounds [minLon, minLat, maxLon, maxLat] to set approximate center
-              const [minLon, minLat, maxLon, maxLat] = meta.bounds.map((n: any) => Number(n))
-              const cenLon = (minLon + maxLon) / 2
-              const cenLat = (minLat + maxLat) / 2
-              setCenter([cenLon, cenLat])
-              setStartZoom(z => z ?? 14)
-            } else {
-              setCenter(center => center ?? [0, 0])
-              setStartZoom(z => z ?? 3)
-            }
-            setTiles([{ id: `course-${courseKey}`, tile_url: proxyUrl, minzoom, maxzoom, tileSize }])
-          } else {
-            // No metadata found; use sensible defaults
-            setTitle(courseKey)
-            setSubtitle(undefined)
-            setAttribution(undefined)
-            setHasDbTiles(false)
-            setCenter(center => center ?? [0, 0])
-            setStartZoom(z => z ?? 3)
-            setTiles([{ id: `course-${courseKey}`, tile_url: proxyUrl, minzoom: 0, maxzoom: 22, tileSize: 512 }])
-          }
-        } else {
-          setTiles([])
-        }
-      } finally {
-        setLoading(false)
+      if (profile?.club_id) {
+        setGolfClubId(profile.club_id)
+        // @ts-ignore - golf_clubs is joined data
+        setGolfClubName(profile.golf_clubs?.name || '')
       }
-    })()
-  }, [])
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    window.location.href = '/login-client'
+      // Fetch images - only show images uploaded by the current user
+      // (clients shouldn't see other users' images)
+      const { data, error } = await supabase
+        .from('images')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+      
+      if (!error && data) setImages(data)
+    } catch (error) {
+      console.error('Error loading dashboard:', error)
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const displayName = profile?.full_name || 'Client'
-  const courseName = clubName || profile?.organization || '—'
+  useEffect(() => { load() }, [])
+
+  const mapboxToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Top bar with user details */}
-      <div className="w-full border-b bg-white">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold">Welcome, {displayName}</h1>
-            <p className="text-sm text-muted-foreground">Golf Course: {courseName}</p>
-          </div>
-          <Button variant="outline" onClick={handleLogout}>Logout</Button>
+    <div className="container mx-auto py-6 space-y-6">
+      {/* Welcome Section */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Welcome to {golfClubName || 'Your Golf Course'}</h1>
+          <p className="text-muted-foreground mt-1">
+            View your course map and processed imagery
+          </p>
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-6 space-y-6">
+      {/* Golf Course Map */}
+      {golfClubId && mapboxToken ? (
+        <MapboxGolfCourseMap
+          golfClubId={golfClubId}
+          mapboxAccessToken={mapboxToken}
+          showControls={true}
+          className="w-full"
+        />
+      ) : (
         <Card>
-          <CardContent className="pt-6">
-            {loading ? (
-              <div className="p-6 text-sm text-muted-foreground">Loading map...</div>
-            ) : tiles.length === 0 ? (
-              <div className="p-6 text-sm text-muted-foreground">No map source configured.</div>
-            ) : (
-              <div className="space-y-3">
-                {!hasDbTiles && (
-                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
-                    No tile metadata found for this course; showing overlay if tiles exist in storage. Add metadata in Admin → Upload Tileset Metadata for better centering.
-                  </div>
+          <CardContent className="p-8">
+            <Alert>
+              <MapPin className="h-4 w-4" />
+              <AlertDescription>
+                {!mapboxToken ? (
+                  <>
+                    <strong>Mapbox token not configured.</strong>
+                    <br />
+                    Please add VITE_MAPBOX_ACCESS_TOKEN to your .env file.
+                  </>
+                ) : (
+                  <>
+                    <strong>No golf course assigned.</strong>
+                    <br />
+                    Please contact your administrator to assign you to a golf course.
+                  </>
                 )}
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    {title && <h2 className="text-lg font-medium">{title}</h2>}
-                    {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <label className="text-sm flex items-center gap-2">
-                      <input type="checkbox" checked={opacity > 0} onChange={(e) => setOpacity(e.target.checked ? 0.9 : 0)} />
-                      Show Overlay
-                    </label>
-                  </div>
-                </div>
-                <MapboxViewer tiles={tiles} center={center} zoom={startZoom} opacity={opacity} attribution={attribution} />
-              </div>
-            )}
+              </AlertDescription>
+            </Alert>
           </CardContent>
         </Card>
-      </div>
+      )}
+
+      {/* Processed Images Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ImageIcon className="w-5 h-5" />
+            Processed Imagery
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="text-center py-8 text-muted-foreground">
+              Loading images...
+            </div>
+          ) : images.length > 0 ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {images.map((img) => (
+                <ClientImageTile key={img.id} image={img} />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              No processed images yet.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+const ClientImageTile = ({ image }: { image: any }) => {
+  const [url, setUrl] = useState('')
+  useEffect(() => {
+    (async () => {
+      const u = await ImageService.getImageUrl(image)
+      setUrl(u)
+    })()
+  }, [image])
+  return (
+    <div className="border rounded">
+      {url ? (<img src={url} className="w-full h-auto" />) : <div className="p-6 text-sm text-muted-foreground">Loading...</div>}
     </div>
   )
 }
 
 export default DashboardClient
+
+

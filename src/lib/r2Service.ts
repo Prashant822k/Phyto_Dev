@@ -36,34 +36,26 @@ export class R2Service {
   }
 
   static async uploadFile(key: string, file: File): Promise<{ success: boolean; key: string; url: string }> {
-    // Prefer direct PUT; if CORS blocks or network fails, fallback to server-side upload
-    try {
-      const presign = await this.callFunction({ action: 'getPutUrl', key, contentType: file.type })
-      const putUrl = (presign as any).url as string
-      if (!putUrl) throw new Error('Failed to obtain signed PUT URL')
-      const resp = await fetch(putUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file })
-      if (!resp.ok) {
-        const text = await resp.text().catch(() => '')
-        throw new Error(`Direct PUT failed: ${resp.status} ${text}`)
+    // Convert file to base64
+    const fileData = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const result = reader.result as string
+        // Remove data URL prefix (e.g., "data:image/png;base64,")
+        const base64 = result.split(',')[1]
+        resolve(base64)
       }
-      return { success: true, key, url: putUrl }
-    } catch (e) {
-      // Fallback: send file bytes to edge which uploads to R2 server-side (avoids browser CORS)
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = () => {
-          const result = reader.result as string
-          resolve(result.split(',')[1])
-        }
-        reader.onerror = reject
-        reader.readAsDataURL(file)
-      })
-      const res = await this.callFunction({ action: 'uploadFile', key, contentType: file.type, fileData: base64 })
-      if (!(res as any)?.success) {
-        throw new Error((res as any)?.error || 'Server-side upload failed')
-      }
-      return { success: true, key, url: (res as any).url as string }
-    }
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+
+    const res = await this.callFunction({ 
+      action: 'uploadFile', 
+      key, 
+      contentType: file.type,
+      fileData 
+    })
+    return res as { success: boolean; key: string; url: string }
   }
 
   private static async callFunction(body: Record<string, unknown>) {

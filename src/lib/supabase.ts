@@ -22,6 +22,36 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 })
 
+// Initialize auth on client load
+const initAuth = async () => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      console.log('No active session, creating demo session')
+      await supabase.auth.signInWithPassword({
+        email: 'demo@phytomaps.com',
+        password: 'demo123'
+      }).catch(async () => {
+        // If sign in fails, try to sign up
+        await supabase.auth.signUp({
+          email: 'demo@phytomaps.com',
+          password: 'demo123'
+        })
+      })
+    }
+  } catch (error) {
+    console.error('Auth initialization error:', error)
+  }
+}
+
+// Initialize auth immediately
+initAuth()
+
+// Make supabase available globally for testing in browser console
+if (typeof window !== 'undefined') {
+  (window as any).supabase = supabase;
+}
+
 // Database types
 export interface Database {
   public: {
@@ -54,6 +84,26 @@ export interface Database {
           organization?: string | null
           role?: 'admin' | 'client'
           club_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      golf_clubs: {
+        Row: {
+          id: string
+          name: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
           created_at?: string
           updated_at?: string
         }
@@ -99,7 +149,8 @@ export interface Database {
           processing_started_at?: string | null
           processing_completed_at?: string | null
           analysis_results?: any | null
-          terrain_classification?: any | null
+          ndvi_score?: number | null
+          vegetation_health?: 'healthy' | 'moderate' | 'poor' | null
           created_at?: string
           updated_at?: string
         }
@@ -121,7 +172,8 @@ export interface Database {
           processing_started_at?: string | null
           processing_completed_at?: string | null
           analysis_results?: any | null
-          terrain_classification?: any | null
+          ndvi_score?: number | null
+          vegetation_health?: 'healthy' | 'moderate' | 'poor' | null
           created_at?: string
           updated_at?: string
         }
@@ -131,7 +183,7 @@ export interface Database {
           id: string
           image_id: string
           user_id: string
-          job_type: 'golf_course_classification'
+          job_type: 'ndvi_analysis' | 'vegetation_health' | 'terrain_analysis'
           status: 'queued' | 'processing' | 'completed' | 'failed'
           priority: number
           started_at: string | null
@@ -146,7 +198,7 @@ export interface Database {
           id?: string
           image_id: string
           user_id: string
-          job_type: 'golf_course_classification'
+          job_type: 'ndvi_analysis' | 'vegetation_health' | 'terrain_analysis'
           status?: 'queued' | 'processing' | 'completed' | 'failed'
           priority?: number
           started_at?: string | null
@@ -161,7 +213,7 @@ export interface Database {
           id?: string
           image_id?: string
           user_id?: string
-          job_type?: 'golf_course_classification'
+          job_type?: 'ndvi_analysis' | 'vegetation_health' | 'terrain_analysis'
           status?: 'queued' | 'processing' | 'completed' | 'failed'
           priority?: number
           started_at?: string | null
@@ -225,22 +277,76 @@ export interface Database {
           added_at?: string
         }
       }
-      golf_clubs: {
+      golf_course_tilesets: {
         Row: {
           id: string
+          golf_club_id: string
           name: string
+          description: string | null
+          min_lat: number
+          max_lat: number
+          min_lon: number
+          max_lon: number
+          center_lat: number
+          center_lon: number
+          min_zoom: number
+          max_zoom: number
+          default_zoom: number
+          r2_folder_path: string
+          tile_url_pattern: string
+          tile_size: number
+          format: 'png' | 'jpg' | 'webp'
+          attribution: string | null
+          metadata: any | null
+          is_active: boolean
           created_at: string
           updated_at: string
         }
         Insert: {
           id?: string
+          golf_club_id: string
           name: string
+          description?: string | null
+          min_lat: number
+          max_lat: number
+          min_lon: number
+          max_lon: number
+          center_lat: number
+          center_lon: number
+          min_zoom?: number
+          max_zoom?: number
+          default_zoom?: number
+          r2_folder_path: string
+          tile_url_pattern: string
+          tile_size?: number
+          format?: 'png' | 'jpg' | 'webp'
+          attribution?: string | null
+          metadata?: any | null
+          is_active?: boolean
           created_at?: string
           updated_at?: string
         }
         Update: {
           id?: string
+          golf_club_id?: string
           name?: string
+          description?: string | null
+          min_lat?: number
+          max_lat?: number
+          min_lon?: number
+          max_lon?: number
+          center_lat?: number
+          center_lon?: number
+          min_zoom?: number
+          max_zoom?: number
+          default_zoom?: number
+          r2_folder_path?: string
+          tile_url_pattern?: string
+          tile_size?: number
+          format?: 'png' | 'jpg' | 'webp'
+          attribution?: string | null
+          metadata?: any | null
+          is_active?: boolean
           created_at?: string
           updated_at?: string
         }

@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import { R2Service } from './r2Service'
 import type { Database } from './supabase'
 import { v4 as uuidv4 } from './uuid'
+import { sanitizeGolfCourseName } from './utils'
 
 
 
@@ -88,25 +89,20 @@ export class ImageService {
         throw new Error('User not authenticated. Please log in again.')
       }
 
-      // Generate R2 key in z/x/y structure under user scope: user/{userId}/{zoom}/{x}/{y}.png
-      const { data: me } = await supabase.from('users').select('id, club_id, organization').eq('id', authenticatedUser.id).single()
-      const z = metadata.zoomLevel ?? null
-      const x = metadata.tileX ?? null
-      const y = metadata.tileY ?? null
-      const courseName = (metadata.golfCourseName || me?.organization || 'uncategorized').toString()
-      const safeCourse = courseName
-        .toLowerCase()
-        .replace(/\.{2,}/g, '')
-        .replace(/[\/\_]/g, '-')
-        .replace(/\s+/g, '-')
-        .replace(/[^a-z0-9\-]/g, '')
-        .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '')
-      const basePrefix = `${safeCourse}`
-      const filename = 'tile.png'
-      const key = (z != null && x != null && y != null)
-        ? `${basePrefix}/${z}/${x}/${y}.png`
-        : `${basePrefix}/misc/${Date.now()}_${file.name}`
+      // Generate R2 key under golf course folder: {golf_course_name}/
+      const { data: me } = await supabase.from('users').select('id, club_id').eq('id', authenticatedUser.id).single()
+      const timestamp = Date.now()
+      const filename = `${timestamp}_${file.name}`
+      
+      // Use golf course name if provided, otherwise fall back to user-based structure
+      let key: string
+      if (metadata.golfCourseName) {
+        const sanitizedCourseName = sanitizeGolfCourseName(metadata.golfCourseName)
+        key = `${sanitizedCourseName}/${filename}`
+      } else {
+        const clubPrefix = me?.club_id ? `club/${me.club_id}` : `user/${authenticatedUser.id}`
+        key = `${clubPrefix}/user/${authenticatedUser.id}/${filename}`
+      }
 
       // Upload to R2 via edge function (avoids CORS issues)
       const uploadResult = await R2Service.uploadFile(key, file)
@@ -116,7 +112,7 @@ export class ImageService {
         
       // Upload succeeded to R2
 
-      // Save metadata to database (backward compatible images table)
+      // Save metadata to database
       const { data: { user }, error: userError } = await supabase.auth.getUser()
       if (userError || !user) {
         throw new Error('User not authenticated')
@@ -148,8 +144,6 @@ export class ImageService {
         try { await R2Service.deleteObject(key) } catch {}
         throw new Error(`Database error: ${dbError.message}`)
       }
-
-      // Note: no insertion into a tiles table since it's not part of the current schema
 
       return {
         success: true,
@@ -316,6 +310,7 @@ export class ImageService {
       tileX?: number
       tileY?: number
       useR2?: boolean
+      golfCourseName?: string
     },
     onProgress?: (completed: number, total: number) => void
   ): Promise<Array<UploadResult>> {
