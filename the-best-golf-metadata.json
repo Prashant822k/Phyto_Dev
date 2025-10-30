@@ -1,0 +1,11 @@
+{
+  "name": "The Best Golf - Main Course",
+  "description": "High-resolution orthomosaic tiles of the golf course for Mapbox overlay",
+  "bounds": [5.755898, 51.361755, 5.779088, 51.372146],
+  "center": [5.767493, 51.366951, 17],
+  "minzoom": 14,
+  "maxzoom": 20,
+  "tileSize": 512,
+  "attribution": "© Company Golf Dataset"
+}
+
