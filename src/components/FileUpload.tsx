@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload, File, CheckCircle, AlertCircle, MapPin } from "lucide-react";
+import { Upload, File, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ImageService, type UploadResult } from "@/lib/imageService";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { supabase } from "@/lib/supabase";
 
 interface FileUploadProps {
   onFileProcessed: (imageId: string, imageUrl: string) => void;
@@ -20,13 +22,11 @@ const FileUpload = ({ onFileProcessed, onMultipleFilesProcessed }: FileUploadPro
   const [uploadMode, setUploadMode] = useState<'single' | 'multiple'>('single');
   const [currentUploadIndex, setCurrentUploadIndex] = useState(0);
   const [totalUploads, setTotalUploads] = useState(0);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   
-  // Geographic metadata inputs
-  const [lat, setLat] = useState<string>("");
-  const [lon, setLon] = useState<string>("");
-  const [zoomLevel, setZoomLevel] = useState<string>("");
-  const [tileX, setTileX] = useState<string>("");
-  const [tileY, setTileY] = useState<string>("");
+  // Golf course selection
+  const [courses, setCourses] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedCourse, setSelectedCourse] = useState<string>("");
   
   const { toast } = useToast();
 
@@ -52,10 +52,41 @@ const FileUpload = ({ onFileProcessed, onMultipleFilesProcessed }: FileUploadPro
     return true;
   };
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data, error } = await supabase.from('golf_clubs').select('id, name').order('name');
+        if (!error && data) {
+          setCourses(data as any);
+        }
+      } catch {}
+    })();
+  }, []);
+
   const handleFileUpload = async (files: File[]) => {
     const validFiles = files.filter(validateFile);
     if (validFiles.length === 0) return;
-    
+
+    // Validate required metadata
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      if (!sess.session) {
+        toast({ title: "Not authenticated", description: "Please log in again.", variant: "destructive" });
+        return;
+      }
+      const { data: me } = await supabase.from('users').select('role').eq('id', sess.session.user.id).single();
+      if (me?.role !== 'admin') {
+        toast({ title: "Forbidden", description: "Only admins can upload tiles.", variant: "destructive" });
+        return;
+      }
+    } catch {}
+
+    if (!selectedCourse.trim()) {
+      toast({ title: "Select a golf course", description: "Please choose a course for these tiles.", variant: "destructive" });
+      return;
+    }
+    // z/x/y will be parsed from filename per file when available.
+
     setIsProcessing(true);
     setTotalUploads(validFiles.length);
     setCurrentUploadIndex(0);
@@ -69,42 +100,60 @@ const FileUpload = ({ onFileProcessed, onMultipleFilesProcessed }: FileUploadPro
         setCurrentUploadIndex(i + 1);
         setUploadProgress(`Uploading ${file.name} (${i + 1}/${validFiles.length})...`);
         
-        // Parse geographic metadata (can be different for each file)
+        // Attempt to parse z/x/y from file name patterns: z-x-y.png or z_x_y.png
+        let zVal: number | undefined = undefined;
+        let xVal: number | undefined = undefined;
+        let yVal: number | undefined = undefined;
+        const base = file.name.replace(/\.png$/i, '');
+        const m = base.match(/(\d+)[_-](\d+)[_-](\d+)$/);
+        if (m) {
+          zVal = parseInt(m[1]);
+          xVal = parseInt(m[2]);
+          yVal = parseInt(m[3]);
+        }
         const metadata = {
-          lat: lat ? parseFloat(lat) : undefined,
-          lon: lon ? parseFloat(lon) : undefined,
-          zoomLevel: zoomLevel ? parseInt(zoomLevel) : undefined,
-          tileX: tileX ? parseInt(tileX) : undefined,
-          tileY: tileY ? parseInt(tileY) : undefined,
-          // Remove R2 option as we're only using Supabase storage
+          zoomLevel: zVal,
+          tileX: xVal,
+          tileY: yVal,
+          golfCourseName: selectedCourse || undefined,
         };
         
         console.log('Uploading file with metadata:', { fileName: file.name, metadata });
         const result: UploadResult = await ImageService.uploadTile(file, metadata);
         
-        if (result.success && result.image && result.publicUrl) {
+        if (result.success && result.image) {
+          const signedUrl = await ImageService.getImageUrl(result.image);
           const uploadedFile = {
             name: file.name,
             id: result.image.id,
-            url: result.publicUrl
+            url: signedUrl
           };
           
           setUploadedFiles(prev => [...prev, uploadedFile]);
-          results.push({ imageId: result.image.id, imageUrl: result.publicUrl });
+          results.push({ imageId: result.image.id, imageUrl: signedUrl });
         } else {
           throw new Error(result.error || `Upload failed for ${file.name}`);
         }
       }
       
+      if (results.length === 0) {
+        toast({
+          title: "No files uploaded",
+          description: "None of the selected files were uploaded. Check z/x/y values or filename pattern and try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       setUploadProgress("All uploads successful! Processing will begin shortly...");
-      
+
       toast({
         title: "PNG Tiles Uploaded Successfully",
-        description: `${validFiles.length} PNG tile(s) uploaded and queued for analysis.`,
+        description: `${results.length} PNG tile(s) uploaded.`,
       });
       
-      // Call appropriate callback
-      if (validFiles.length === 1) {
+      // Call appropriate callback(s)
+      if (results.length === 1) {
         onFileProcessed(results[0].imageId, results[0].imageUrl);
       } else if (onMultipleFilesProcessed) {
         onMultipleFilesProcessed(results);
@@ -131,14 +180,14 @@ const FileUpload = ({ onFileProcessed, onMultipleFilesProcessed }: FileUploadPro
     setIsDragOver(false);
     const files = Array.from(e.dataTransfer.files);
     if (files.length > 0) {
-      handleFileUpload(files);
+      setSelectedFiles(files as File[]);
     }
   };
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length > 0) {
-      handleFileUpload(files);
+      setSelectedFiles(files as File[]);
     }
   };
 
@@ -150,10 +199,26 @@ const FileUpload = ({ onFileProcessed, onMultipleFilesProcessed }: FileUploadPro
           Upload Agricultural Data
         </CardTitle>
         <CardDescription>
-          Upload PNG tiles from tiled TIFF images for agricultural analysis. Supports single or multiple file uploads.
+          Upload PNG tiles for analysis. Supports single or multiple file uploads.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Golf Course Selection */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-lg">
+          <div className="space-y-2">
+            <Label>Golf Course</Label>
+            <Select value={selectedCourse} onValueChange={setSelectedCourse}>
+              <SelectTrigger>
+                <SelectValue placeholder={courses.length ? 'Select a golf course' : 'No courses found'} />
+              </SelectTrigger>
+              <SelectContent>
+                {courses.map((c) => (
+                  <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
         {/* Upload Mode Toggle */}
         <div className="flex items-center gap-4 p-4 bg-muted/30 rounded-lg">
           <Label htmlFor="upload-mode">Upload Mode:</Label>
@@ -175,67 +240,7 @@ const FileUpload = ({ onFileProcessed, onMultipleFilesProcessed }: FileUploadPro
           </div>
         </div>
 
-        {/* Geographic Metadata Form */}
-        {uploadedFiles.length === 0 && (
-          <div className="grid grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
-            <div className="space-y-2">
-              <Label htmlFor="lat">Latitude (optional)</Label>
-              <Input
-                id="lat"
-                type="number"
-                step="any"
-                placeholder="e.g., 12.9716"
-                value={lat}
-                onChange={(e) => setLat(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="lon">Longitude (optional)</Label>
-              <Input
-                id="lon"
-                type="number"
-                step="any"
-                placeholder="e.g., 77.5946"
-                value={lon}
-                onChange={(e) => setLon(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="zoom">Zoom Level (optional)</Label>
-              <Input
-                id="zoom"
-                type="number"
-                placeholder="e.g., 15"
-                value={zoomLevel}
-                onChange={(e) => setZoomLevel(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="tile-x">Tile X (optional)</Label>
-              <Input
-                id="tile-x"
-                type="number"
-                placeholder="e.g., 12345"
-                value={tileX}
-                onChange={(e) => setTileX(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="tile-y">Tile Y (optional)</Label>
-              <Input
-                id="tile-y"
-                type="number"
-                placeholder="e.g., 67890"
-                value={tileY}
-                onChange={(e) => setTileY(e.target.value)}
-              />
-            </div>
-            <div className="col-span-2 flex items-center gap-2 text-sm text-muted-foreground">
-              <MapPin className="w-4 h-4" />
-              Geographic metadata helps with analysis and tile positioning
-            </div>
-          </div>
-        )}
+        {/* No geographic metadata fields; z/x/y inferred from filename when present */}
 
         <div
           className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
@@ -290,11 +295,7 @@ const FileUpload = ({ onFileProcessed, onMultipleFilesProcessed }: FileUploadPro
                 variant="outline" 
                 onClick={() => {
                   setUploadedFiles([]);
-                  setLat("");
-                  setLon("");
-                  setZoomLevel("");
-                  setTileX("");
-                  setTileY("");
+                  setSelectedFiles([]);
                 }}
               >
                 Upload {uploadedFiles.length === 1 ? 'Another' : 'More'} Tile{uploadedFiles.length === 1 ? '' : 's'}
@@ -308,7 +309,7 @@ const FileUpload = ({ onFileProcessed, onMultipleFilesProcessed }: FileUploadPro
                   Drop PNG tiles here or click to upload
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Only PNG files from tiled TIFF images are supported
+                  Only PNG files are supported
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
                   Max file size: 50MB per file • {uploadMode === 'multiple' ? 'Multiple files supported' : 'Single file mode'}
@@ -327,6 +328,14 @@ const FileUpload = ({ onFileProcessed, onMultipleFilesProcessed }: FileUploadPro
                   Choose PNG Tile{uploadMode === 'multiple' ? 's' : ''}
                 </label>
               </Button>
+              {selectedFiles.length > 0 && (
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-muted-foreground">Selected: {selectedFiles.length} file{selectedFiles.length > 1 ? 's' : ''}</span>
+                  <Button onClick={() => handleFileUpload(selectedFiles)} disabled={isProcessing}>
+                    Submit Upload
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>

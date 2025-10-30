@@ -22,31 +22,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 })
 
-// Initialize auth on client load
-const initAuth = async () => {
-  try {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
-      console.log('No active session, creating demo session')
-      await supabase.auth.signInWithPassword({
-        email: 'demo@phytomaps.com',
-        password: 'demo123'
-      }).catch(async () => {
-        // If sign in fails, try to sign up
-        await supabase.auth.signUp({
-          email: 'demo@phytomaps.com',
-          password: 'demo123'
-        })
-      })
-    }
-  } catch (error) {
-    console.error('Auth initialization error:', error)
-  }
-}
-
-// Initialize auth immediately
-initAuth()
-
 // Database types
 export interface Database {
   public: {
@@ -57,6 +32,8 @@ export interface Database {
           email: string
           full_name: string | null
           organization: string | null
+          role: 'admin' | 'client'
+          club_id: string | null
           created_at: string
           updated_at: string
         }
@@ -65,6 +42,8 @@ export interface Database {
           email: string
           full_name?: string | null
           organization?: string | null
+          role?: 'admin' | 'client'
+          club_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -73,6 +52,8 @@ export interface Database {
           email?: string
           full_name?: string | null
           organization?: string | null
+          role?: 'admin' | 'client'
+          club_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -118,8 +99,7 @@ export interface Database {
           processing_started_at?: string | null
           processing_completed_at?: string | null
           analysis_results?: any | null
-          ndvi_score?: number | null
-          vegetation_health?: 'healthy' | 'moderate' | 'poor' | null
+          terrain_classification?: any | null
           created_at?: string
           updated_at?: string
         }
@@ -141,8 +121,7 @@ export interface Database {
           processing_started_at?: string | null
           processing_completed_at?: string | null
           analysis_results?: any | null
-          ndvi_score?: number | null
-          vegetation_health?: 'healthy' | 'moderate' | 'poor' | null
+          terrain_classification?: any | null
           created_at?: string
           updated_at?: string
         }
@@ -152,7 +131,7 @@ export interface Database {
           id: string
           image_id: string
           user_id: string
-          job_type: 'ndvi_analysis' | 'vegetation_health' | 'terrain_analysis'
+          job_type: 'golf_course_classification'
           status: 'queued' | 'processing' | 'completed' | 'failed'
           priority: number
           started_at: string | null
@@ -167,7 +146,7 @@ export interface Database {
           id?: string
           image_id: string
           user_id: string
-          job_type: 'ndvi_analysis' | 'vegetation_health' | 'terrain_analysis'
+          job_type: 'golf_course_classification'
           status?: 'queued' | 'processing' | 'completed' | 'failed'
           priority?: number
           started_at?: string | null
@@ -182,7 +161,7 @@ export interface Database {
           id?: string
           image_id?: string
           user_id?: string
-          job_type?: 'ndvi_analysis' | 'vegetation_health' | 'terrain_analysis'
+          job_type?: 'golf_course_classification'
           status?: 'queued' | 'processing' | 'completed' | 'failed'
           priority?: number
           started_at?: string | null
@@ -244,6 +223,26 @@ export interface Database {
           session_id?: string
           image_id?: string
           added_at?: string
+        }
+      }
+      golf_clubs: {
+        Row: {
+          id: string
+          name: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          created_at?: string
+          updated_at?: string
         }
       }
     }

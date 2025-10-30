@@ -13,6 +13,7 @@ import DashboardAdmin from "./pages/DashboardAdmin";
 import DashboardClient from "./pages/DashboardClient";
 import RegisterClient from "./pages/RegisterClient";
 import ForgotPassword from "./pages/ForgotPassword";
+import Gallery from "./pages/Gallery";
 
 const queryClient = new QueryClient();
 
@@ -91,6 +92,7 @@ const App = () => {
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/admin" element={<RequireRole role="admin"><DashboardAdmin /></RequireRole>} />
             <Route path="/client" element={<RequireRole role="client"><DashboardClient /></RequireRole>} />
+            <Route path="/gallery" element={<RequireRole role="client"><Gallery /></RequireRole>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
