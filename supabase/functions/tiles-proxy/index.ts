@@ -30,10 +30,11 @@ serve(async (req: Request) => {
     if (!auth) return new Response('Unauthorized', { status: 401, headers: corsHeaders })
 
     // Build candidate R2 keys to support legacy and raw folder names
-    const safeCourse = golfCourse
-      .toLowerCase()
+    const lower = golfCourse.toLowerCase()
+    const safeCourse = lower
       .replace(/\.{2,}/g, '')
       .replace(/\//g, '-')
+      .replace(/_/g, '-')
       .replace(/\s+/g, '-')
       .replace(/[^a-z0-9\-]/g, '')
       .replace(/-+/g, '-')
@@ -41,13 +42,31 @@ serve(async (req: Request) => {
     const rawCourse = golfCourse
       .replace(/\.{2,}/g, '')
       .replace(/^\/+|\/+$/g, '')
+    const singularSafe = safeCourse.endsWith('s') ? safeCourse.slice(0, -1) : safeCourse
+    const singularRaw = rawCourse.endsWith('s') ? rawCourse.slice(0, -1) : rawCourse
 
-    const candidates = [
-      `course/${safeCourse}/${z}/${x}/${y}.png`,      // preferred
-      `${safeCourse}/${z}/${x}/${y}.png`,              // slug without course/
-      `${rawCourse}/${z}/${x}/${y}.png`,               // raw name as uploaded
-      `course/${rawCourse}/${z}/${x}/${y}.png`,        // raw under course/
-    ]
+    // Variants: remove common words and build acronym to match folders like "rcb"
+    const COMMON_WORDS = ['golf', 'club', 'course']
+    const words = lower.replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean)
+    const trimmedWords = words.filter(w => !COMMON_WORDS.includes(w))
+    const removedCommon = trimmedWords.join('-').replace(/-+/g, '-')
+    const acronym = trimmedWords.map(w => w[0]).join('') // e.g., RCB
+
+    const variants = Array.from(new Set([
+      safeCourse,
+      singularSafe,
+      rawCourse,
+      singularRaw,
+      removedCommon,
+      removedCommon.replace(/-/g, ''),
+      acronym,
+    ].filter(v => !!v && v !== '-' )))
+
+    const candidates: string[] = []
+    for (const v of variants) {
+      candidates.push(`course/${v}/${z}/${x}/${y}.png`)
+      candidates.push(`${v}/${z}/${x}/${y}.png`)
+    }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     if (!supabaseUrl) return new Response('SUPABASE_URL missing', { status: 500, headers: corsHeaders })

@@ -133,8 +133,8 @@ serve(async (req) => {
     if (me.club_id) {
       const { data: club } = await supabase.from('golf_clubs').select('name').eq('id', me.club_id).single();
       const clubName = club?.name || '';
-      const safeCourse = clubName
-        .toLowerCase()
+      const lower = clubName.toLowerCase();
+      const safeCourse = lower
         .replace(/\.{2,}/g, '')
         .replace(/\//g, '-')
         .replace(/\s+/g, '-')
@@ -142,14 +142,31 @@ serve(async (req) => {
         .replace(/-+/g, '-')
         .replace(/^-|-$/g, '');
       const rawCourse = clubName.replace(/\.{2,}/g, '').replace(/^\/+|\/+$/g, '');
-      if (safeCourse) {
-        allowedPrefixes.push(`course/${safeCourse}/`);
-        allowedPrefixes.push(`${safeCourse}/`);
+      const COMMON_WORDS = ['golf', 'club', 'course'];
+      const words = lower.replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+      const trimmedWords = words.filter((w) => !COMMON_WORDS.includes(w));
+      const removedCommon = trimmedWords.join('-').replace(/-+/g, '-');
+      const acronym = trimmedWords.map((w) => w[0]).join('');
+
+      const variants = Array.from(
+        new Set(
+          [safeCourse, rawCourse, removedCommon, removedCommon.replace(/-/g, ''), acronym]
+            .filter((v) => !!v)
+        )
+      );
+
+      for (const v of variants) {
+        allowedPrefixes.push(`course/${v}/`);
+        allowedPrefixes.push(`${v}/`);
       }
-      if (rawCourse) {
-        allowedPrefixes.push(`course/${rawCourse}/`);
-        allowedPrefixes.push(`${rawCourse}/`);
+      // Also allow the explicit tileset code mapped to this club, if present
+      const { data: tileset } = await supabase.from('golf_course_tilesets').select('code').eq('club_id', me.club_id).single();
+      const code = (tileset?.code || '').toString().trim();
+      if (code) {
+        allowedPrefixes.push(`course/${code}/`);
+        allowedPrefixes.push(`${code}/`);
       }
+    }
     }
 
     const accountId = Deno.env.get('CLOUDFLARE_R2_ACCOUNT_ID')!;
