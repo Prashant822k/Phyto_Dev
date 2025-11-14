@@ -1,0 +1,6 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {"type":"Feature","properties":{"name":"Course Boundary"},"geometry":{"type":"Polygon","coordinates":[[[72.824,18.934],[72.836,18.934],[72.836,18.942],[72.824,18.942],[72.824,18.934]]]}}
+  ]
+}

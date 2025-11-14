@@ -1,0 +1,6 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {"type":"Feature","properties":{"name":"Irrigation"},"geometry":{"type":"LineString","coordinates":[[72.825,18.937],[72.826,18.938],[72.827,18.939]]}}
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {"type":"Feature","properties":{"name":"Open Sand"},"geometry":{"type":"Polygon","coordinates":[[[72.826,18.938],[72.827,18.938],[72.827,18.939],[72.826,18.939],[72.826,18.938]]]}}
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {"type":"Feature","properties":{"name":"Open Water"},"geometry":{"type":"Polygon","coordinates":[[[72.834,18.939],[72.835,18.939],[72.835,18.94],[72.834,18.94],[72.834,18.939]]]}}
+  ]
+}

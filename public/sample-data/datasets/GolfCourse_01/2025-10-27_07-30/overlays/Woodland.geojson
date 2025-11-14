@@ -1,0 +1,6 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {"type":"Feature","properties":{"name":"Woodland"},"geometry":{"type":"Polygon","coordinates":[[[72.828,18.939],[72.829,18.939],[72.829,18.94],[72.828,18.94],[72.828,18.939]]]}}
+  ]
+}

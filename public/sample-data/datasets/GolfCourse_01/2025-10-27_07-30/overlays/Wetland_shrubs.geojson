@@ -1,0 +1,6 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {"type":"Feature","properties":{"name":"Wetland shrubs"},"geometry":{"type":"Polygon","coordinates":[[[72.832,18.937],[72.833,18.937],[72.833,18.938],[72.832,18.938],[72.832,18.937]]]}}
+  ]
+}

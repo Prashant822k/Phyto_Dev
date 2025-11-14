@@ -1,0 +1,12 @@
+{
+  "project": "GolfCourse_01",
+  "date": "2025-10-27",
+  "time": "07:30",
+  "flight_id": "flight_01",
+  "uploader": "client_xyz",
+  "bbox": [72.8200, 18.9300, 72.8400, 18.9450],
+  "layers": [
+    { "id": "health_tiles", "name": "Health_Map_tiles", "type": "tile", "path": "tiles/{z}/{x}/{y}.png", "minzoom": 12, "maxzoom": 18, "tileSize": 256 },
+    { "id": "contours", "name": "Contours.geojson", "type": "geojson", "path": "overlays/Contours.geojson" }
+  ]
+}

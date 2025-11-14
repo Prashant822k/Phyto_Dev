@@ -1,0 +1,7 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {"type":"Feature","properties":{"name":"Contour 1"},"geometry":{"type":"LineString","coordinates":[[72.825,18.935],[72.835,18.94]]}},
+    {"type":"Feature","properties":{"name":"Contour 2"},"geometry":{"type":"LineString","coordinates":[[72.826,18.936],[72.836,18.941]]}}
+  ]
+}

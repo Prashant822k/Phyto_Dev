@@ -1,0 +1,6 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {"type":"Feature","properties":{"name":"Par 27 Zone"},"geometry":{"type":"Polygon","coordinates":[[[72.827,18.936],[72.829,18.936],[72.829,18.938],[72.827,18.938],[72.827,18.936]]]}}
+  ]
+}

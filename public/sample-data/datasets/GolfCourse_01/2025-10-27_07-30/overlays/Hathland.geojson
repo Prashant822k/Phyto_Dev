@@ -1,0 +1,6 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {"type":"Feature","properties":{"name":"Hathland"},"geometry":{"type":"Polygon","coordinates":[[[72.831,18.938],[72.833,18.938],[72.833,18.94],[72.831,18.94],[72.831,18.938]]]}}
+  ]
+}

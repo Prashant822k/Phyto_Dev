@@ -1,0 +1,6 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {"type":"Feature","properties":{"name":"Par 72 Zone"},"geometry":{"type":"Polygon","coordinates":[[[72.830,18.937],[72.832,18.937],[72.832,18.939],[72.830,18.939],[72.830,18.937]]]}}
+  ]
+}

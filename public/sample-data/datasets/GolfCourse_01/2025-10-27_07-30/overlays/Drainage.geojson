@@ -1,0 +1,6 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {"type":"Feature","properties":{"name":"Drainage"},"geometry":{"type":"LineString","coordinates":[[72.833,18.936],[72.834,18.937],[72.835,18.938]]}}
+  ]
+}
