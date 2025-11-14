@@ -61,7 +61,8 @@ async function createAWS4Url(
   secretAccessKey: string,
   region: string,
   expiresIn: number,
-  payload: string
+  payload: string,
+  extraQuery?: Record<string, string>
 ) {
   const endpoint = `https://${bucket}.${accountId}.r2.cloudflarestorage.com`;
   const timestamp = new Date().toISOString().replace(/[:\-]|\.\d{3}/g, '');
@@ -74,6 +75,9 @@ async function createAWS4Url(
     'X-Amz-Expires': expiresIn.toString(),
     'X-Amz-SignedHeaders': 'host'
   };
+  if (extraQuery) {
+    for (const [k, v] of Object.entries(extraQuery)) queryParams[k] = v;
+  }
 
   const headers: Record<string, string> = { host: `${bucket}.${accountId}.r2.cloudflarestorage.com` };
   const canonicalQuery = Object.keys(queryParams)
@@ -271,7 +275,7 @@ serve(async (req) => {
           }
         }
         
-        const url = await createAWS4Url('GET', bucket, accountId, '', accessKeyId, secretAccessKey, region, 60, '');
+        const url = await createAWS4Url('GET', bucket, accountId, '', accessKeyId, secretAccessKey, region, 60, '', { 'list-type': '2', 'prefix': allowedPrefix });
         const resp = await fetch(url);
         const xmlText = await resp.text();
         // Simple parse: list <Key> elements (R2 returns XML)
