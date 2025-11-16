@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -49,7 +49,6 @@ const VectorLayerOverlayMap = ({
   initialZoom = 15,
   onMapReady
 }: VectorLayerOverlayMapProps) => {
-  const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const [vectorLayers, setVectorLayers] = useState<VectorLayer[]>([]);
   const [visibleLayers, setVisibleLayers] = useState<Set<string>>(new Set());
@@ -59,7 +58,18 @@ const VectorLayerOverlayMap = ({
   const [courseBounds, setCourseBounds] = useState<[[number, number], [number, number]] | null>(null);
   const [courseCenter, setCourseCenter] = useState<[number, number] | null>(null);
   const [currentZoom, setCurrentZoom] = useState<number>(initialZoom);
+  const [mapContainerElement, setMapContainerElement] = useState<HTMLDivElement | null>(null);
+  const [mapReady, setMapReady] = useState(false);
   const layersLoadedRef = useRef(false); // Prevent duplicate loading
+  const mapInitializedRef = useRef(false); // Track if map has been initialized
+
+  // Callback ref to track when container is mounted
+  const mapContainer = useCallback((node: HTMLDivElement | null) => {
+    if (node) {
+      console.log('✅ Map container mounted');
+      setMapContainerElement(node);
+    }
+  }, []);
 
   // Set Mapbox access token
   mapboxgl.accessToken = mapboxAccessToken;
@@ -129,24 +139,36 @@ const VectorLayerOverlayMap = ({
 
   // Initialize map
   useEffect(() => {
-    if (!mapContainer.current || map.current) return;
+    console.log('🔍 Map init useEffect triggered', {
+      hasContainer: !!mapContainerElement,
+      hasBounds: !!courseBounds,
+      isInitialized: mapInitializedRef.current
+    });
 
+    // Wait for container and course bounds first
+    if (!mapContainerElement || !courseBounds) {
+      console.log('⏸️ Waiting for map container and course bounds...');
+      return;
+    }
+
+    // Don't initialize if already initialized
+    if (mapInitializedRef.current) {
+      console.log('⏭️ Map already initialized, skipping');
+      return;
+    }
+
+    console.log('🗺️ Initializing map with bounds:', courseBounds);
+    mapInitializedRef.current = true; // Mark as initialized
+    
     try {
       const mapConfig: any = {
-        container: mapContainer.current,
+        container: mapContainerElement,
         style: baseStyle,
         center: courseCenter || initialCenter,
         zoom: initialZoom,
+        bounds: courseBounds,
+        fitBoundsOptions: { padding: 50 }
       };
-
-      // Use course bounds if available, otherwise use initialBounds
-      if (courseBounds) {
-        mapConfig.bounds = courseBounds;
-        mapConfig.fitBoundsOptions = { padding: 50 };
-      } else if (initialBounds) {
-        mapConfig.bounds = initialBounds;
-        mapConfig.fitBoundsOptions = { padding: 50 };
-      }
 
       map.current = new mapboxgl.Map(mapConfig);
 
@@ -170,6 +192,8 @@ const VectorLayerOverlayMap = ({
         if (onMapReady && map.current) {
           onMapReady(map.current);
         }
+        // Trigger layer loading
+        setMapReady(true);
       });
 
     } catch (err) {
@@ -181,24 +205,36 @@ const VectorLayerOverlayMap = ({
       map.current?.remove();
       map.current = null;
     };
-  }, [baseStyle, showControls, initialCenter, initialZoom, initialBounds, courseBounds, courseCenter]);
+  }, [mapContainerElement, courseBounds]); // Run when container is ready AND bounds are available
 
   // Load all layers onto the map (runs once)
   useEffect(() => {
-    if (!map.current || vectorLayers.length === 0 || layersLoadedRef.current) {
-      console.log('⏸️ Not ready to load layers:', {
-        hasMap: !!map.current,
-        layersCount: vectorLayers.length,
-        alreadyLoaded: layersLoadedRef.current
-      });
+    console.log('🔍 Layer loading effect triggered', {
+      mapReady,
+      hasMap: !!map.current,
+      layersCount: vectorLayers.length,
+      alreadyLoaded: layersLoadedRef.current
+    });
+
+    if (!mapReady || !map.current || vectorLayers.length === 0 || layersLoadedRef.current) {
+      console.log('⏸️ Not ready to load layers');
       return;
     }
 
     const loadAllLayers = async () => {
+      console.log('🔍 loadAllLayers called', {
+        hasMap: !!map.current,
+        isLoaded: map.current?.loaded(),
+        layersCount: vectorLayers.length
+      });
+
       // Wait for map to be fully loaded
       if (!map.current!.loaded()) {
         console.log('⏳ Waiting for map to load before loading layers...');
-        map.current!.once('load', loadAllLayers);
+        map.current!.once('load', () => {
+          console.log('🎉 Map load event fired! Now loading layers...');
+          loadAllLayers();
+        });
         return;
       }
 
@@ -328,7 +364,7 @@ const VectorLayerOverlayMap = ({
     };
 
     loadAllLayers();
-  }, [vectorLayers]);
+  }, [mapReady, vectorLayers]); // Trigger when map is ready OR layers change
 
 
   // Get color for layer based on name
@@ -356,10 +392,13 @@ const VectorLayerOverlayMap = ({
     const layer = vectorLayers.find(l => l.id === layerId);
     if (!layer) return;
 
+    console.log(`🔄 Toggling layer: ${layer.name}`);
+
     setVisibleLayers(prev => {
       const newSet = new Set(prev);
       if (newSet.has(layerId)) {
         // Hide layer
+        console.log(`   👁️‍🗨️ Hiding layer: ${layer.name}`);
         newSet.delete(layerId);
         const mapLayerId = `vector-layer-${layerId}`;
         if (map.current && map.current.getLayer(mapLayerId)) {
@@ -370,6 +409,7 @@ const VectorLayerOverlayMap = ({
         }
       } else {
         // Show layer
+        console.log(`   👁️ Showing layer: ${layer.name}`);
         newSet.add(layerId);
         const mapLayerId = `vector-layer-${layerId}`;
         if (map.current && map.current.getLayer(mapLayerId)) {
@@ -377,6 +417,8 @@ const VectorLayerOverlayMap = ({
           if (map.current.getLayer(`${mapLayerId}-outline`)) {
             map.current.setLayoutProperty(`${mapLayerId}-outline`, 'visibility', 'visible');
           }
+        } else {
+          console.warn(`   ⚠️ Layer ${layer.name} not found on map!`);
         }
       }
       return newSet;
@@ -385,8 +427,11 @@ const VectorLayerOverlayMap = ({
 
   // Toggle all layers
   const toggleAllLayers = () => {
+    console.log(`🔄 Toggle All Layers - Current visible: ${visibleLayers.size}/${vectorLayers.length}`);
+    
     if (visibleLayers.size === vectorLayers.length) {
       // Hide all layers
+      console.log('   👁️‍🗨️ Hiding all layers');
       setVisibleLayers(new Set());
       vectorLayers.forEach(layer => {
         const layerId = `vector-layer-${layer.id}`;
@@ -399,6 +444,7 @@ const VectorLayerOverlayMap = ({
       });
     } else {
       // Show all layers
+      console.log('   👁️ Showing all layers');
       setVisibleLayers(new Set(vectorLayers.map(l => l.id)));
       vectorLayers.forEach(layer => {
         const layerId = `vector-layer-${layer.id}`;
@@ -407,6 +453,8 @@ const VectorLayerOverlayMap = ({
           if (map.current.getLayer(`${layerId}-outline`)) {
             map.current.setLayoutProperty(`${layerId}-outline`, 'visibility', 'visible');
           }
+        } else {
+          console.warn(`   ⚠️ Layer ${layer.name} not found on map!`);
         }
       });
     }
