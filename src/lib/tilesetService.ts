@@ -32,11 +32,14 @@ export interface TilesetMetadata {
   tileSize?: number
   format?: 'png' | 'jpg' | 'webp'
   attribution?: string
+  // Date/time fields for multi-temporal datasets
+  flightDate?: string // YYYY-MM-DD
+  flightTime?: string // HH:MM
 }
 
 export class TilesetService {
   /**
-   * Get tileset for a specific golf club
+   * Get the most recent tileset for a specific golf club
    */
   static async getTilesetForGolfClub(golfClubId: string): Promise<GolfCourseTileset | null> {
     try {
@@ -45,6 +48,7 @@ export class TilesetService {
         .select('*')
         .eq('golf_club_id', golfClubId)
         .eq('is_active', true)
+        .order('flight_datetime', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
@@ -62,7 +66,7 @@ export class TilesetService {
   }
 
   /**
-   * Get all tilesets for a golf club
+   * Get all tilesets for a golf club (ordered by date/time)
    */
   static async getTilesetsForGolfClub(golfClubId: string): Promise<GolfCourseTileset[]> {
     try {
@@ -70,6 +74,7 @@ export class TilesetService {
         .from('golf_course_tilesets')
         .select('*')
         .eq('golf_club_id', golfClubId)
+        .order('flight_datetime', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -126,8 +131,22 @@ export class TilesetService {
       const maxZoom = metadata.maxzoom || metadata.zoom?.max || 20
 
       // Generate r2FolderPath from name if not provided
-      const r2FolderPath = metadata.r2FolderPath || 
-        metadata.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '/tiles'
+      // New format: {course-name}/{YYYY-MM-DD}/{HH-MM}/tiles
+      // Legacy format: {course-name}/tiles
+      let r2FolderPath = metadata.r2FolderPath
+      
+      if (!r2FolderPath) {
+        const courseName = metadata.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+        
+        if (metadata.flightDate && metadata.flightTime) {
+          // New format with date/time
+          const formattedTime = metadata.flightTime.replace(':', '-')
+          r2FolderPath = `${courseName}/${metadata.flightDate}/${formattedTime}/tiles`
+        } else {
+          // Legacy format without date/time
+          r2FolderPath = `${courseName}/tiles`
+        }
+      }
 
       const tilesetData: TilesetInsert = {
         golf_club_id: golfClubId,
@@ -147,6 +166,8 @@ export class TilesetService {
         tile_size: metadata.tileSize || 256,
         format: metadata.format || 'png',
         attribution: metadata.attribution,
+        flight_date: metadata.flightDate || null,
+        flight_time: metadata.flightTime || null,
         is_active: true
       }
 

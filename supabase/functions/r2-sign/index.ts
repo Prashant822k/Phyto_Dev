@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-type Action = 'getPutUrl' | 'getGetUrl' | 'deleteObject' | 'listObjects' | 'uploadFile' | 'getSignedTileUrl' | 'getTile';
+type Action = 'getPutUrl' | 'getGetUrl' | 'deleteObject' | 'listObjects' | 'uploadFile' | 'getSignedTileUrl' | 'getTile' | 'getBatchPutUrls';
 
 interface SignedUrlRequest {
   action: Action;
@@ -15,6 +15,11 @@ interface SignedUrlRequest {
   expiresInSeconds?: number;
   prefix?: string;
   fileData?: string; // base64 encoded
+  // For batch tile uploads
+  tiles?: Array<{ z: number; x: number; y: number }>;
+  courseId?: string;
+  flightDate?: string; // YYYY-MM-DD
+  flightTime?: string; // HH:MM
 }
 
 // --- AWS4 / Crypto helpers ---
@@ -311,28 +316,51 @@ serve(async (req) => {
         // Direct tile serving with authentication (for Mapbox tile URLs)
         if (!body.key) return new Response(JSON.stringify({ error: 'Missing key' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 });
         
-        // Extract course ID from key
-        const courseId = body.key.split('/')[0];
+        // Extract r2_folder_path from key
+        // Key format: "course/2024-11-05/14-30/tiles/15/5242/12663.png" or "course/tiles/15/5242/12663.png"
+        // We need to extract everything before the z/x/y.png part
+        const keyParts = body.key.split('/');
+        let r2FolderPath = '';
         
-        console.log('getTile - courseId:', courseId, 'key:', body.key);
+        // Find the "tiles" folder and extract path up to and including it
+        const tilesIndex = keyParts.indexOf('tiles');
+        if (tilesIndex !== -1) {
+          r2FolderPath = keyParts.slice(0, tilesIndex + 1).join('/');
+        } else {
+          // Fallback: assume last 3 parts are z/x/y.png
+          r2FolderPath = keyParts.slice(0, -3).join('/');
+        }
         
-        // Verify access
+        console.log('getTile - key:', body.key, 'r2FolderPath:', r2FolderPath);
+        
+        // Verify access - find tileset by r2_folder_path
         const { data: tileset, error: tilesetErr } = await supabase
           .from('golf_course_tilesets')
           .select('golf_club_id')
-          .eq('r2_folder_path', `${courseId}/tiles`)
+          .eq('r2_folder_path', r2FolderPath)
           .single();
         
         console.log('getTile - tileset:', tileset, 'error:', tilesetErr, 'userClubId:', me.club_id);
         
         if (tilesetErr || !tileset) {
-          console.error('getTile - Tileset not found for:', courseId);
-          return new Response('Tileset not found', { status: 404, headers: corsHeaders });
+          console.error('getTile - Tileset not found for r2_folder_path:', r2FolderPath);
+          console.error('getTile - Error details:', JSON.stringify(tilesetErr));
+          return new Response(JSON.stringify({ 
+            error: 'Tileset not found', 
+            r2_folder_path: r2FolderPath,
+            key: body.key 
+          }), { 
+            status: 404, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
         }
         
         if (me.role !== 'admin' && tileset.golf_club_id !== me.club_id) {
           console.error('getTile - Access denied. User club:', me.club_id, 'Tileset club:', tileset.golf_club_id);
-          return new Response('Access denied', { status: 403, headers: corsHeaders });
+          return new Response(JSON.stringify({ error: 'Access denied' }), { 
+            status: 403, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
         }
         
         // Fetch tile from R2 using public R2.dev URL
@@ -351,7 +379,15 @@ serve(async (req) => {
           const errorText = await tileResp.text();
           console.error('getTile - R2 error response:', errorText);
           console.error('getTile - Tile not found in R2:', body.key, 'status:', tileResp.status);
-          return new Response('Tile not found', { status: 404, headers: corsHeaders });
+          return new Response(JSON.stringify({ 
+            error: 'Tile not found in R2', 
+            status: tileResp.status,
+            key: body.key,
+            url: tileUrl
+          }), { 
+            status: 404, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
         }
         
         const tileData = await tileResp.arrayBuffer();
@@ -363,6 +399,52 @@ serve(async (req) => {
             'Content-Type': 'image/png',
             'Cache-Control': 'public, max-age=31536000, immutable',
           },
+        });
+      }
+
+      case 'getBatchPutUrls': {
+        // Generate presigned PUT URLs for batch tile uploads
+        requireAdmin();
+        
+        if (!body.tiles || !body.courseId) {
+          return new Response(JSON.stringify({ error: 'Missing tiles or courseId' }), { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
+            status: 400 
+          });
+        }
+
+        // Construct R2 path based on whether date/time is provided
+        let basePath: string;
+        if (body.flightDate && body.flightTime) {
+          // New format: courseId/YYYY-MM-DD/HH-MM/tiles/z/x/y.png
+          const formattedTime = body.flightTime.replace(':', '-');
+          basePath = `${body.courseId}/${body.flightDate}/${formattedTime}/tiles`;
+        } else {
+          // Legacy format: courseId/tiles/z/x/y.png
+          basePath = `${body.courseId}/tiles`;
+        }
+
+        // Generate presigned URLs for each tile
+        const urls = await Promise.all(
+          body.tiles.map(async (tile) => {
+            const key = `${basePath}/${tile.z}/${tile.x}/${tile.y}.png`;
+            const url = await createAWS4Url(
+              'PUT',
+              bucket,
+              accountId,
+              key,
+              accessKeyId,
+              secretAccessKey,
+              region,
+              expiresIn,
+              'UNSIGNED-PAYLOAD'
+            );
+            return { z: tile.z, x: tile.x, y: tile.y, url, key };
+          })
+        );
+
+        return new Response(JSON.stringify({ urls, basePath }), { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         });
       }
 

@@ -7,7 +7,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { TilesetService } from '@/lib/tilesetService'
-import { Upload, FileJson, CheckCircle, AlertCircle, Map } from 'lucide-react'
+import { extractOrFallbackDateTime } from '@/lib/exifExtractor'
+import { Upload, FileJson, CheckCircle, AlertCircle, Map, Calendar, Clock } from 'lucide-react'
 
 interface GolfClub {
   id: string
@@ -22,6 +23,10 @@ interface TilesetMetadataUploaderProps {
 const TilesetMetadataUploader = ({ golfClubs, onSuccess }: TilesetMetadataUploaderProps) => {
   const [selectedClubId, setSelectedClubId] = useState<string>('')
   const [metadataJson, setMetadataJson] = useState<string>('')
+  const [flightDate, setFlightDate] = useState<string>('')
+  const [flightTime, setFlightTime] = useState<string>('')
+  const [sampleTileFile, setSampleTileFile] = useState<File | null>(null)
+  const [isExtractingTime, setIsExtractingTime] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadStatus, setUploadStatus] = useState<{
     type: 'success' | 'error' | null
@@ -163,6 +168,14 @@ const TilesetMetadataUploader = ({ golfClubs, onSuccess }: TilesetMetadataUpload
         return
       }
 
+      // Add flight date and time to metadata
+      if (flightDate) {
+        metadata.flightDate = flightDate
+      }
+      if (flightTime) {
+        metadata.flightTime = flightTime
+      }
+
       // Upload to database
       const result = await TilesetService.createTileset(selectedClubId, metadata)
 
@@ -175,6 +188,9 @@ const TilesetMetadataUploader = ({ golfClubs, onSuccess }: TilesetMetadataUpload
         // Reset form
         setMetadataJson('')
         setSelectedClubId('')
+        setFlightDate('')
+        setFlightTime('')
+        setSampleTileFile(null)
         
         // Call success callback
         onSuccess?.()
@@ -192,6 +208,34 @@ const TilesetMetadataUploader = ({ golfClubs, onSuccess }: TilesetMetadataUpload
       })
     } finally {
       setIsUploading(false)
+    }
+  }
+
+  // Handle sample tile upload for time extraction
+  const handleSampleTileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setSampleTileFile(file)
+    setIsExtractingTime(true)
+
+    try {
+      const dateTime = await extractOrFallbackDateTime(file)
+      setFlightDate(dateTime.date)
+      setFlightTime(dateTime.time)
+      
+      setUploadStatus({
+        type: 'success',
+        message: `Time extracted from tile: ${dateTime.date} at ${dateTime.time}`
+      })
+    } catch (error) {
+      console.error('Failed to extract time:', error)
+      setUploadStatus({
+        type: 'error',
+        message: 'Could not extract time from tile. Please enter manually.'
+      })
+    } finally {
+      setIsExtractingTime(false)
     }
   }
 
@@ -242,6 +286,58 @@ const TilesetMetadataUploader = ({ golfClubs, onSuccess }: TilesetMetadataUpload
               ))}
             </SelectContent>
           </Select>
+        </div>
+
+        {/* Flight Date and Time */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="flight-date" className="flex items-center gap-2">
+              <Calendar className="w-4 h-4" />
+              Flight Date
+            </Label>
+            <Input
+              id="flight-date"
+              type="date"
+              value={flightDate}
+              onChange={(e) => setFlightDate(e.target.value)}
+              placeholder="YYYY-MM-DD"
+            />
+            <p className="text-xs text-muted-foreground">
+              Date when the drone flight was conducted
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="flight-time" className="flex items-center gap-2">
+              <Clock className="w-4 h-4" />
+              Flight Time
+            </Label>
+            <Input
+              id="flight-time"
+              type="time"
+              value={flightTime}
+              onChange={(e) => setFlightTime(e.target.value)}
+              placeholder="HH:MM"
+            />
+            <p className="text-xs text-muted-foreground">
+              Approximate time of flight
+            </p>
+          </div>
+        </div>
+
+        {/* Sample Tile Upload for Time Extraction */}
+        <div className="space-y-2">
+          <Label htmlFor="sample-tile">Extract Time from Sample Tile (Optional)</Label>
+          <Input
+            id="sample-tile"
+            type="file"
+            accept=".png"
+            onChange={handleSampleTileUpload}
+            disabled={isExtractingTime}
+          />
+          <p className="text-xs text-muted-foreground">
+            Upload a PNG tile to automatically extract date/time from EXIF metadata
+          </p>
         </div>
 
         {/* File Upload */}
@@ -338,7 +434,8 @@ const TilesetMetadataUploader = ({ golfClubs, onSuccess }: TilesetMetadataUpload
           </div>
           <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside mt-2">
             <li>Tiles must be in R2 bucket with z/x/y structure</li>
-            <li>r2FolderPath auto-generated from name if not provided</li>
+            <li>r2FolderPath auto-generated: {"{course-name}/{date}/{time}/tiles"}</li>
+            <li>Date/time enables multi-temporal layer comparison</li>
             <li>Use Web Mercator projection (EPSG:3857)</li>
             <li>See STEP_BY_STEP_MAPBOX_GUIDE.md for detailed instructions</li>
           </ul>

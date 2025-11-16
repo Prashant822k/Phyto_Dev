@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import FileUpload from '@/components/FileUpload'
-import TilesetUploader from '@/components/TilesetUploader'
-import TilesetMetadataUploader from '@/components/TilesetMetadataUploader'
+import UnifiedTilesetUploader from '@/components/UnifiedTilesetUploader'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { R2Service } from '@/lib/r2Service'
@@ -293,21 +292,8 @@ const DashboardAdmin = () => {
         </TabsList>
         
         <TabsContent value="tiles">
-          <div className="space-y-6">
-            {/* Tileset Metadata Uploader - For adding metadata to existing tiles */}
-            <TilesetMetadataUploader 
-              golfClubs={clubs} 
-              onSuccess={() => {
-                toast({
-                  title: 'Success',
-                  description: 'Tileset metadata uploaded successfully!'
-                })
-              }}
-            />
-            
-            {/* Tileset File Uploader - For uploading actual tile files */}
-            <TilesetUploader />
-          </div>
+          {/* Unified Tileset Uploader - Upload tiles with date/time metadata */}
+          <UnifiedTilesetUploader />
         </TabsContent>
         
         <TabsContent value="upload">

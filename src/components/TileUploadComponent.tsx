@@ -9,6 +9,8 @@ import { Upload, FolderOpen, FileArchive, CheckCircle2, AlertCircle } from 'luci
 
 export function TileUploadComponent() {
   const [courseId, setCourseId] = useState('');
+  const [flightDate, setFlightDate] = useState('');
+  const [flightTime, setFlightTime] = useState('');
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState<UploadProgress | null>(null);
   const [tileUrl, setTileUrl] = useState('');
@@ -29,7 +31,7 @@ export function TileUploadComponent() {
     setError('');
 
     try {
-      const uploader = new TileUploader(courseId);
+      const uploader = new TileUploader(courseId, flightDate, flightTime);
       const tiles = await extractTilesFromZip(file);
       
       if (tiles.length === 0) {
@@ -64,7 +66,7 @@ export function TileUploadComponent() {
     setError('');
 
     try {
-      const uploader = new TileUploader(courseId);
+      const uploader = new TileUploader(courseId, flightDate, flightTime);
       const tiles = await extractTilesFromFiles(files);
       
       if (tiles.length === 0) {
@@ -92,7 +94,11 @@ export function TileUploadComponent() {
       <CardHeader>
         <CardTitle>Upload Map Tiles</CardTitle>
         <CardDescription>
-          Upload tiles for a golf course to Cloudflare R2. Tiles must follow the z/x/y.png structure.
+          Upload tiles for a golf course to R2 with date/time metadata. Tiles must follow the z/x/y.png structure.
+          <br />
+          <span className="text-xs mt-1 block">
+            Path format: <code className="bg-gray-200 px-1 rounded">course-id/YYYY-MM-DD/HH-MM/tiles/z/x/y.png</code>
+          </span>
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -108,6 +114,51 @@ export function TileUploadComponent() {
           />
           <p className="text-xs text-gray-500">
             Use lowercase with hyphens (e.g., the-best-golf)
+          </p>
+        </div>
+
+        {/* Date and Time Inputs */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="flightDate">Flight Date</Label>
+            <Input
+              id="flightDate"
+              type="date"
+              value={flightDate}
+              onChange={(e) => setFlightDate(e.target.value)}
+              disabled={uploading}
+            />
+            <p className="text-xs text-gray-500">
+              Date of drone flight
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="flightTime">Flight Time</Label>
+            <Input
+              id="flightTime"
+              type="time"
+              value={flightTime}
+              onChange={(e) => setFlightTime(e.target.value)}
+              disabled={uploading}
+            />
+            <p className="text-xs text-gray-500">
+              Approximate time (HH:MM)
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <p className="text-sm text-blue-800">
+            <strong>New Structure:</strong> Tiles will be uploaded to{' '}
+            {flightDate && flightTime ? (
+              <code className="bg-blue-100 px-1 rounded">
+                {courseId || 'course-id'}/{flightDate}/{flightTime.replace(':', '-')}/tiles/z/x/y.png
+              </code>
+            ) : (
+              <code className="bg-blue-100 px-1 rounded">
+                {courseId || 'course-id'}/tiles/z/x/y.png
+              </code>
+            )}
           </p>
         </div>
 
@@ -215,14 +266,26 @@ export function TileUploadComponent() {
         )}
 
         {/* Instructions */}
-        <div className="text-xs text-gray-500 space-y-1 p-3 bg-gray-50 rounded">
-          <p className="font-medium">Expected tile structure:</p>
-          <code className="block pl-4">
-            z/x/y.png<br />
-            15/5242/12663.png<br />
-            15/5242/12664.png<br />
-            16/10484/25326.png
+        <div className="text-xs text-gray-500 space-y-2 p-3 bg-gray-50 rounded">
+          <p className="font-medium">📁 Expected tile folder structure:</p>
+          <code className="block pl-4 text-xs">
+            tiles/<br />
+            &nbsp;&nbsp;14/<br />
+            &nbsp;&nbsp;&nbsp;&nbsp;2621/<br />
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;6331.png<br />
+            &nbsp;&nbsp;15/<br />
+            &nbsp;&nbsp;&nbsp;&nbsp;5242/<br />
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;12663.png<br />
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;12664.png<br />
+            &nbsp;&nbsp;16/<br />
+            &nbsp;&nbsp;&nbsp;&nbsp;10484/<br />
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;25326.png<br />
+            &nbsp;&nbsp;...<br />
+            &nbsp;&nbsp;20/ (zoom 20 tiles)
           </code>
+          <p className="text-xs text-gray-600 mt-2">
+            💡 <strong>Tip:</strong> Upload as ZIP file or select the entire tiles folder. Date and time must match your metadata!
+          </p>
         </div>
       </CardContent>
     </Card>

@@ -299,6 +299,9 @@ export interface Database {
           attribution: string | null
           metadata: any | null
           is_active: boolean
+          flight_date: string | null
+          flight_time: string | null
+          flight_datetime: string | null
           created_at: string
           updated_at: string
         }
@@ -323,6 +326,9 @@ export interface Database {
           attribution?: string | null
           metadata?: any | null
           is_active?: boolean
+          flight_date?: string | null
+          flight_time?: string | null
+          flight_datetime?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -347,6 +353,9 @@ export interface Database {
           attribution?: string | null
           metadata?: any | null
           is_active?: boolean
+          flight_date?: string | null
+          flight_time?: string | null
+          flight_datetime?: string | null
           created_at?: string
           updated_at?: string
         }

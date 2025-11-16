@@ -14,6 +14,8 @@ import DashboardAdmin from "./pages/DashboardAdmin";
 import DashboardClient from "./pages/DashboardClient";
 import TestUpload from "./pages/TestUpload";
 import TileUploadPage from "./pages/TileUploadPage";
+import TestLayers from "./pages/TestLayers";
+import VectorLayerComparisonView from "./views/VectorLayerComparisonView";
 
 const queryClient = new QueryClient();
 
@@ -131,6 +133,8 @@ const App = () => {
             <Route path="/client" element={<RequireRole role="client"><DashboardClient /></RequireRole>} />
             <Route path="/test-upload" element={<TestUpload />} />
             <Route path="/tile-upload" element={<TileUploadPage />} />
+            <Route path="/test-layers" element={<TestLayers />} />
+            <Route path="/golf-courses/:golfCourseId/compare-layers" element={<VectorLayerComparisonView />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

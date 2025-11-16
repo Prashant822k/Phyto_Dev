@@ -19,10 +19,14 @@ export interface UploadProgress {
 
 export class TileUploader {
   private courseId: string;
+  private flightDate?: string;
+  private flightTime?: string;
   private abortController: AbortController | null = null;
 
-  constructor(courseId: string) {
+  constructor(courseId: string, flightDate?: string, flightTime?: string) {
     this.courseId = courseId;
+    this.flightDate = flightDate;
+    this.flightTime = flightTime;
   }
 
   // Upload single tile (with optional compression)
@@ -58,16 +62,34 @@ export class TileUploader {
     this.abortController = new AbortController();
     const coords = tiles.map(({ z, x, y }) => ({ z, x, y }));
     
-    // Get presigned URLs in batch
-    const response = await fetch(`${WORKER_URL}/batch-upload-urls`, {
+    // Get auth token
+    const { supabase } = await import('./supabase');
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      throw new Error('Authentication required for tile upload');
+    }
+
+    // Get presigned URLs from Supabase edge function
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const response = await fetch(`${supabaseUrl}/functions/v1/r2-sign`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ courseId: this.courseId, tiles: coords }),
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`
+      },
+      body: JSON.stringify({ 
+        action: 'getBatchPutUrls',
+        courseId: this.courseId, 
+        tiles: coords,
+        flightDate: this.flightDate,
+        flightTime: this.flightTime
+      }),
       signal: this.abortController.signal,
     });
 
     if (!response.ok) {
-      throw new Error(`Worker error: ${response.status} ${response.statusText}`);
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Upload URL generation failed: ${response.status} ${errorData.error || response.statusText}`);
     }
 
     const { urls } = await response.json();
