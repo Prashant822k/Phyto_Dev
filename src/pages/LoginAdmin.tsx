@@ -23,10 +23,19 @@ const LoginAdmin = () => {
       if (error) throw error
       const userId = data.user?.id
       if (!userId) throw new Error('No user')
-      const { data: me } = await supabase.from('users').select('role').eq('id', userId).single()
-      if (me?.role !== 'admin') {
-        throw new Error('This account does not have admin privileges')
+      const { data: me, error: profileError } = await supabase.from('users').select('role').eq('id', userId).single()
+      
+      if (profileError) {
+        console.error('Profile error:', profileError)
+        throw new Error('Could not load user profile. Please contact support.')
       }
+      
+      if (!me || me.role !== 'admin') {
+        // Sign out the user since they're not an admin
+        await supabase.auth.signOut()
+        throw new Error('This account does not have admin privileges. Please use the client login page.')
+      }
+      
       navigate('/admin')
       toast({ title: 'Welcome Admin', description: 'You have successfully logged in as an administrator' })
     } catch (e) {

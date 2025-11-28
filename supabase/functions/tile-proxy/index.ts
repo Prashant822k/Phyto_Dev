@@ -21,6 +21,7 @@ serve(async (req) => {
     const x = url.searchParams.get('x')
     const y = url.searchParams.get('y')
     const token = url.searchParams.get('token')
+    const type = url.searchParams.get('type') || 'regular' // 'regular' or 'health'
 
     if (!tilesetId || !z || !x || !y || !token) {
       console.error('Missing parameters:', { tilesetId, z, x, y, hasToken: !!token })
@@ -38,17 +39,34 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    const { data: tileset, error: tilesetError } = await supabase
-      .from('golf_course_tilesets')
-      .select('r2_folder_path, tile_url_pattern')
-      .eq('id', tilesetId)
-      .single()
+    let tileset, tilesetError
+    
+    if (type === 'health') {
+      // Get health map tileset
+      const result = await supabase
+        .from('health_map_tilesets')
+        .select('r2_folder_path, tile_url_pattern')
+        .eq('id', tilesetId)
+        .single()
+      tileset = result.data
+      tilesetError = result.error
+    } else {
+      // Get regular tileset
+      const result = await supabase
+        .from('golf_course_tilesets')
+        .select('r2_folder_path, tile_url_pattern')
+        .eq('id', tilesetId)
+        .single()
+      tileset = result.data
+      tilesetError = result.error
+    }
 
     if (tilesetError || !tileset) {
-      console.error('Tileset not found:', tilesetId, tilesetError)
+      console.error('Tileset not found:', tilesetId, type, tilesetError)
       return new Response(JSON.stringify({ 
         error: 'Tileset not found',
         tilesetId,
+        type,
         details: tilesetError
       }), { 
         status: 404, 

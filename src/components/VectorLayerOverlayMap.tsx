@@ -225,16 +225,35 @@ const VectorLayerOverlayMap = ({
       console.log('🔍 loadAllLayers called', {
         hasMap: !!map.current,
         isLoaded: map.current?.loaded(),
+        isStyleLoaded: map.current?.isStyleLoaded(),
         layersCount: vectorLayers.length
       });
 
-      // Wait for map to be fully loaded
-      if (!map.current!.loaded()) {
+      // Wait for map to be fully loaded - check both loaded() and isStyleLoaded()
+      if (!map.current!.loaded() || !map.current!.isStyleLoaded()) {
         console.log('⏳ Waiting for map to load before loading layers...');
-        map.current!.once('load', () => {
+        
+        // Set up load listener
+        const handleLoad = () => {
           console.log('🎉 Map load event fired! Now loading layers...');
           loadAllLayers();
-        });
+        };
+        
+        // Try both events
+        if (!map.current!.loaded()) {
+          map.current!.once('load', handleLoad);
+        } else if (!map.current!.isStyleLoaded()) {
+          map.current!.once('styledata', handleLoad);
+        }
+        
+        // Fallback: if map doesn't fire event within 2 seconds, try anyway
+        setTimeout(() => {
+          if (map.current && (map.current.loaded() || map.current.isStyleLoaded())) {
+            console.log('⏰ Timeout fallback: Loading layers now');
+            loadAllLayers();
+          }
+        }, 2000);
+        
         return;
       }
 

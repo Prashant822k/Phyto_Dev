@@ -4,7 +4,8 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { MapPin, Layers, ZoomIn, ZoomOut, Maximize2, AlertCircle } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { MapPin, Layers, ZoomIn, ZoomOut, Maximize2, AlertCircle, Activity } from 'lucide-react';
 import { TilesetService } from '@/lib/tilesetService';
 import { supabase } from '@/lib/supabase';
 import DateLayerDropdown from '@/components/DateLayerDropdown';
@@ -39,6 +40,9 @@ const MapboxGolfCourseMap = ({
   const [error, setError] = useState<string | null>(null);
   const [currentZoom, setCurrentZoom] = useState<number>(16);
   const [swipeMode, setSwipeMode] = useState(false);
+  const [showHealthMaps, setShowHealthMaps] = useState(false);
+  const [healthMapTilesets, setHealthMapTilesets] = useState<any[]>([]);
+  const [selectedHealthMapId, setSelectedHealthMapId] = useState<string>('');
 
   // Set Mapbox access token
   mapboxgl.accessToken = mapboxAccessToken;
@@ -327,16 +331,33 @@ const MapboxGolfCourseMap = ({
 
           {/* Map Controls */}
           {showControls && (
-            <div className="flex items-center justify-end pt-2 gap-1">
-              <Button variant="outline" size="sm" onClick={zoomOut}>
-                <ZoomOut className="w-4 h-4" />
-              </Button>
-              <Button variant="outline" size="sm" onClick={zoomIn}>
-                <ZoomIn className="w-4 h-4" />
-              </Button>
-              <Button variant="outline" size="sm" onClick={resetView}>
-                <Maximize2 className="w-4 h-4" />
-              </Button>
+            <div className="flex items-center justify-between pt-2">
+              {/* Health Maps Toggle */}
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-green-600" />
+                <span className="text-sm font-medium">Health Maps</span>
+                <Switch
+                  checked={showHealthMaps}
+                  onCheckedChange={setShowHealthMaps}
+                  disabled={healthMapTilesets.length === 0}
+                />
+                {healthMapTilesets.length === 0 && (
+                  <span className="text-xs text-muted-foreground">(No health maps available)</span>
+                )}
+              </div>
+              
+              {/* Zoom Controls */}
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="sm" onClick={zoomOut}>
+                  <ZoomOut className="w-4 h-4" />
+                </Button>
+                <Button variant="outline" size="sm" onClick={zoomIn}>
+                  <ZoomIn className="w-4 h-4" />
+                </Button>
+                <Button variant="outline" size="sm" onClick={resetView}>
+                  <Maximize2 className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
           )}
         </CardHeader>

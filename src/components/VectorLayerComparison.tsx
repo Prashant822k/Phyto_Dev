@@ -4,8 +4,8 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Layers, RefreshCw, AlertCircle, ArrowLeftRight } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Layers, RefreshCw, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 interface VectorLayer {
@@ -40,13 +40,37 @@ const VectorLayerComparison = ({
   const leftMap = useRef<mapboxgl.Map | null>(null);
   const rightMap = useRef<mapboxgl.Map | null>(null);
   
+  // Ref callbacks to track when containers mount
+  const setLeftMapContainer = (node: HTMLDivElement | null) => {
+    if (node) {
+      console.log('✅ Left map container mounted');
+      leftMapContainer.current = node;
+      // Check if both containers are ready
+      if (rightMapContainer.current) {
+        setContainersReady(true);
+      }
+    }
+  };
+  
+  const setRightMapContainer = (node: HTMLDivElement | null) => {
+    if (node) {
+      console.log('✅ Right map container mounted');
+      rightMapContainer.current = node;
+      // Check if both containers are ready
+      if (leftMapContainer.current) {
+        setContainersReady(true);
+      }
+    }
+  };
+  
   const [vectorLayers, setVectorLayers] = useState<VectorLayer[]>([]);
-  const [leftLayerId, setLeftLayerId] = useState<string>('');
-  const [rightLayerId, setRightLayerId] = useState<string>('');
+  const [leftLayerIds, setLeftLayerIds] = useState<Set<string>>(new Set());
+  const [rightLayerIds, setRightLayerIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [courseBounds, setCourseBounds] = useState<[[number, number], [number, number]] | null>(null);
   const [courseCenter, setCourseCenter] = useState<[number, number] | null>(null);
+  const [containersReady, setContainersReady] = useState(false);
 
   // Set Mapbox access token
   mapboxgl.accessToken = mapboxAccessToken;
@@ -104,13 +128,7 @@ const VectorLayerComparison = ({
 
       setVectorLayers(layers);
       
-      // Auto-select first two layers if available
-      if (layers.length >= 2) {
-        setLeftLayerId(layers[0].id);
-        setRightLayerId(layers[1].id);
-      } else if (layers.length === 1) {
-        setLeftLayerId(layers[0].id);
-      }
+      // Don't auto-select any layers - let user choose
     } catch (err) {
       console.error('Failed to load vector layers:', err);
       setError('Failed to load vector layers');
@@ -123,6 +141,75 @@ const VectorLayerComparison = ({
     loadVectorLayers();
   }, [golfClubId]);
 
+  // Load PNG tiles on a map
+  const loadPNGTilesOnMap = async (map: mapboxgl.Map) => {
+    try {
+      // Get the most recent tileset for this golf club
+      const { data: tileset, error: tilesetError } = await supabase
+        .from('golf_course_tilesets')
+        .select('*')
+        .eq('golf_club_id', golfClubId)
+        .eq('is_active', true)
+        .order('flight_datetime', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (tilesetError || !tileset) {
+        console.error('❌ No tileset found for comparison maps');
+        return;
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.error('❌ No active session for tile loading');
+        return;
+      }
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const sourceId = `tileset-source-${tileset.id}`;
+      const layerId = `tileset-layer-${tileset.id}`;
+
+      // Remove existing if present
+      if (map.getLayer(layerId)) {
+        map.removeLayer(layerId);
+      }
+      if (map.getSource(sourceId)) {
+        map.removeSource(sourceId);
+      }
+
+      // Add PNG tiles source
+      const tileUrlTemplate = `${supabaseUrl}/functions/v1/tile-proxy?tilesetId=${tileset.id}&z={z}&x={x}&y={y}&token=${session.access_token}`;
+
+      map.addSource(sourceId, {
+        type: 'raster',
+        tiles: [tileUrlTemplate],
+        tileSize: tileset.tile_size || 256,
+        minzoom: tileset.min_zoom,
+        maxzoom: tileset.max_zoom,
+        bounds: [
+          tileset.min_lon,
+          tileset.min_lat,
+          tileset.max_lon,
+          tileset.max_lat
+        ]
+      });
+
+      map.addLayer({
+        id: layerId,
+        type: 'raster',
+        source: sourceId,
+        paint: {
+          'raster-opacity': 0.85
+        }
+      });
+
+      console.log('✅ PNG tiles loaded on comparison map:', tileset.name);
+    } catch (error) {
+      console.error('❌ Failed to load PNG tiles on comparison map:', error);
+    }
+  };
+
   // Initialize maps
   useEffect(() => {
     console.log('🔍 Comparison map init check:', {
@@ -134,8 +221,25 @@ const VectorLayerComparison = ({
       hasRightMap: !!rightMap.current
     });
     
-    if (!leftMapContainer.current || !rightMapContainer.current || !courseCenter || leftMap.current || rightMap.current) {
-      console.log('⏸️ Comparison maps not ready to initialize');
+    if (!leftMapContainer.current) {
+      console.log('⏸️ Left container not ready');
+      return;
+    }
+    
+    if (!rightMapContainer.current) {
+      console.log('⏸️ Right container not ready');
+      return;
+    }
+    
+    if (!courseCenter) {
+      console.log('⏸️ Course center not set yet', { courseCenter, courseBounds });
+      return;
+    }
+    
+    console.log('✅ All conditions met, initializing maps!', { courseCenter, courseBounds });
+    
+    if (leftMap.current || rightMap.current) {
+      console.log('⏸️ Maps already initialized');
       return;
     }
 
@@ -173,12 +277,20 @@ const VectorLayerComparison = ({
       rightMap.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
       rightMap.current.addControl(new mapboxgl.ScaleControl(), 'bottom-left');
 
-      leftMap.current.on('load', () => {
+      leftMap.current.on('load', async () => {
         console.log('✅ Left comparison map loaded');
+        // Load PNG tiles immediately when map loads
+        if (leftMap.current) {
+          await loadPNGTilesOnMap(leftMap.current);
+        }
       });
 
-      rightMap.current.on('load', () => {
+      rightMap.current.on('load', async () => {
         console.log('✅ Right comparison map loaded');
+        // Load PNG tiles immediately when map loads
+        if (rightMap.current) {
+          await loadPNGTilesOnMap(rightMap.current);
+        }
       });
 
       // Sync maps - when one moves, move the other
@@ -224,7 +336,7 @@ const VectorLayerComparison = ({
       leftMap.current = null;
       rightMap.current = null;
     };
-  }, [courseCenter, courseBounds, baseStyle]);
+  }, [courseCenter, courseBounds, baseStyle, containersReady]);
 
   // Load layer on map
   const loadLayerOnMap = async (map: mapboxgl.Map, layerId: string) => {
@@ -348,25 +460,63 @@ const VectorLayerComparison = ({
     }
   };
 
-  // Load left layer
+  // Load left layers
   useEffect(() => {
-    if (!leftMap.current || !leftLayerId) {
-      console.log('⏸️ Left map not ready:', { hasMap: !!leftMap.current, layerId: leftLayerId });
+    if (!leftMap.current || !leftMap.current.loaded()) {
       return;
     }
-    console.log('🔄 Loading left layer:', leftLayerId);
-    loadLayerOnMap(leftMap.current, leftLayerId);
-  }, [leftLayerId, leftMap.current, vectorLayers]);
+    
+    // Remove all existing layers
+    vectorLayers.forEach(layer => {
+      const sourceId = `vector-source-${layer.id}`;
+      const layerId = `vector-layer-${layer.id}`;
+      const outlineLayerId = `${layerId}-outline`;
+      
+      if (leftMap.current!.getLayer(outlineLayerId)) {
+        leftMap.current!.removeLayer(outlineLayerId);
+      }
+      if (leftMap.current!.getLayer(layerId)) {
+        leftMap.current!.removeLayer(layerId);
+      }
+      if (leftMap.current!.getSource(sourceId)) {
+        leftMap.current!.removeSource(sourceId);
+      }
+    });
+    
+    // Load selected layers
+    leftLayerIds.forEach(layerId => {
+      loadLayerOnMap(leftMap.current!, layerId);
+    });
+  }, [leftLayerIds, vectorLayers]);
 
-  // Load right layer
+  // Load right layers
   useEffect(() => {
-    if (!rightMap.current || !rightLayerId) {
-      console.log('⏸️ Right map not ready:', { hasMap: !!rightMap.current, layerId: rightLayerId });
+    if (!rightMap.current || !rightMap.current.loaded()) {
       return;
     }
-    console.log('🔄 Loading right layer:', rightLayerId);
-    loadLayerOnMap(rightMap.current, rightLayerId);
-  }, [rightLayerId, rightMap.current, vectorLayers]);
+    
+    // Remove all existing layers
+    vectorLayers.forEach(layer => {
+      const sourceId = `vector-source-${layer.id}`;
+      const layerId = `vector-layer-${layer.id}`;
+      const outlineLayerId = `${layerId}-outline`;
+      
+      if (rightMap.current!.getLayer(outlineLayerId)) {
+        rightMap.current!.removeLayer(outlineLayerId);
+      }
+      if (rightMap.current!.getLayer(layerId)) {
+        rightMap.current!.removeLayer(layerId);
+      }
+      if (rightMap.current!.getSource(sourceId)) {
+        rightMap.current!.removeSource(sourceId);
+      }
+    });
+    
+    // Load selected layers
+    rightLayerIds.forEach(layerId => {
+      loadLayerOnMap(rightMap.current!, layerId);
+    });
+  }, [rightLayerIds, vectorLayers]);
 
   // Get color for layer based on name
   const getLayerColor = (name: string): string => {
@@ -387,11 +537,26 @@ const VectorLayerComparison = ({
     return colors[hash % colors.length];
   };
 
-  // Swap layers
-  const swapLayers = () => {
-    const temp = leftLayerId;
-    setLeftLayerId(rightLayerId);
-    setRightLayerId(temp);
+  // Toggle layer on left map
+  const toggleLeftLayer = (layerId: string) => {
+    const newSet = new Set(leftLayerIds);
+    if (newSet.has(layerId)) {
+      newSet.delete(layerId);
+    } else {
+      newSet.add(layerId);
+    }
+    setLeftLayerIds(newSet);
+  };
+  
+  // Toggle layer on right map
+  const toggleRightLayer = (layerId: string) => {
+    const newSet = new Set(rightLayerIds);
+    if (newSet.has(layerId)) {
+      newSet.delete(layerId);
+    } else {
+      newSet.add(layerId);
+    }
+    setRightLayerIds(newSet);
   };
 
   if (isLoading) {
@@ -446,47 +611,55 @@ const VectorLayerComparison = ({
 
       <CardContent>
         {/* Layer Selection Controls */}
-        <div className="flex items-center gap-4 mb-4">
-          <div className="flex-1">
-            <label className="text-sm font-medium mb-2 block">Left Layer</label>
-            <Select value={leftLayerId} onValueChange={setLeftLayerId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select layer" />
-              </SelectTrigger>
-              <SelectContent>
-                {vectorLayers.map((layer) => (
-                  <SelectItem key={layer.id} value={layer.id}>
+        <div className="grid grid-cols-2 gap-6 mb-4">
+          {/* Left Map Layers */}
+          <div>
+            <h3 className="text-sm font-medium mb-3">Left Map Layers</h3>
+            <div className="space-y-2 max-h-48 overflow-y-auto border rounded-md p-3">
+              {vectorLayers.map((layer) => (
+                <div key={layer.id} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`left-${layer.id}`}
+                    checked={leftLayerIds.has(layer.id)}
+                    onCheckedChange={() => toggleLeftLayer(layer.id)}
+                  />
+                  <label
+                    htmlFor={`left-${layer.id}`}
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                  >
                     {layer.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                  </label>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              {leftLayerIds.size} layer{leftLayerIds.size !== 1 ? 's' : ''} selected
+            </p>
           </div>
 
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={swapLayers}
-            className="mt-6"
-            disabled={!leftLayerId || !rightLayerId}
-          >
-            <ArrowLeftRight className="w-4 h-4" />
-          </Button>
-
-          <div className="flex-1">
-            <label className="text-sm font-medium mb-2 block">Right Layer</label>
-            <Select value={rightLayerId} onValueChange={setRightLayerId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select layer" />
-              </SelectTrigger>
-              <SelectContent>
-                {vectorLayers.map((layer) => (
-                  <SelectItem key={layer.id} value={layer.id}>
+          {/* Right Map Layers */}
+          <div>
+            <h3 className="text-sm font-medium mb-3">Right Map Layers</h3>
+            <div className="space-y-2 max-h-48 overflow-y-auto border rounded-md p-3">
+              {vectorLayers.map((layer) => (
+                <div key={layer.id} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`right-${layer.id}`}
+                    checked={rightLayerIds.has(layer.id)}
+                    onCheckedChange={() => toggleRightLayer(layer.id)}
+                  />
+                  <label
+                    htmlFor={`right-${layer.id}`}
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                  >
                     {layer.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                  </label>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              {rightLayerIds.size} layer{rightLayerIds.size !== 1 ? 's' : ''} selected
+            </p>
           </div>
         </div>
 
@@ -494,13 +667,13 @@ const VectorLayerComparison = ({
         <div className="grid grid-cols-2 gap-4">
           <div className="relative">
             <div
-              ref={leftMapContainer}
+              ref={setLeftMapContainer}
               className="w-full h-[400px] rounded-lg overflow-hidden border"
             />
-            {leftLayerId && (
+            {leftLayerIds.size > 0 && (
               <div className="absolute bottom-2 left-2 bg-white/90 px-3 py-1 rounded-md shadow-md">
-                <p className="text-sm font-medium">
-                  {vectorLayers.find(l => l.id === leftLayerId)?.name}
+                <p className="text-xs font-medium">
+                  {leftLayerIds.size} layer{leftLayerIds.size !== 1 ? 's' : ''}
                 </p>
               </div>
             )}
@@ -508,13 +681,13 @@ const VectorLayerComparison = ({
 
           <div className="relative">
             <div
-              ref={rightMapContainer}
+              ref={setRightMapContainer}
               className="w-full h-[400px] rounded-lg overflow-hidden border"
             />
-            {rightLayerId && (
+            {rightLayerIds.size > 0 && (
               <div className="absolute bottom-2 left-2 bg-white/90 px-3 py-1 rounded-md shadow-md">
-                <p className="text-sm font-medium">
-                  {vectorLayers.find(l => l.id === rightLayerId)?.name}
+                <p className="text-xs font-medium">
+                  {rightLayerIds.size} layer{rightLayerIds.size !== 1 ? 's' : ''}
                 </p>
               </div>
             )}

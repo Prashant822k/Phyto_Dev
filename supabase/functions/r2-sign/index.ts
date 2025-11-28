@@ -340,7 +340,7 @@ serve(async (req) => {
           .eq('r2_folder_path', r2FolderPath)
           .single();
         
-        console.log('getTile - tileset:', tileset, 'error:', tilesetErr, 'userClubId:', me.club_id);
+        console.log('getTile - tileset:', tileset, 'error:', tilesetErr, 'userId:', me.id);
         
         if (tilesetErr || !tileset) {
           console.error('getTile - Tileset not found for r2_folder_path:', r2FolderPath);
@@ -355,12 +355,26 @@ serve(async (req) => {
           });
         }
         
-        if (me.role !== 'admin' && tileset.golf_club_id !== me.club_id) {
-          console.error('getTile - Access denied. User club:', me.club_id, 'Tileset club:', tileset.golf_club_id);
-          return new Response(JSON.stringify({ error: 'Access denied' }), { 
-            status: 403, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-          });
+        // Check access: admin OR client has access to this golf club via client_golf_courses
+        if (me.role !== 'admin') {
+          // Check if client is assigned to this golf club
+          const { data: clientCourse, error: clientCourseErr } = await supabase
+            .from('client_golf_courses')
+            .select('golf_club_id')
+            .eq('client_id', me.id)
+            .eq('golf_club_id', tileset.golf_club_id)
+            .eq('is_active', true)
+            .single();
+          
+          console.log('getTile - clientCourse:', clientCourse, 'error:', clientCourseErr);
+          
+          if (clientCourseErr || !clientCourse) {
+            console.error('getTile - Access denied. User not assigned to golf club:', tileset.golf_club_id);
+            return new Response(JSON.stringify({ error: 'Access denied' }), { 
+              status: 403, 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+          }
         }
         
         // Fetch tile from R2 using public R2.dev URL

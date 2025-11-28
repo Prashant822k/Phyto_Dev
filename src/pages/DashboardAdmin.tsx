@@ -12,7 +12,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { Badge } from '@/components/ui/badge'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
-import { Trash2, UserPlus, Shield, Users, Upload, FileText, Settings, Map } from 'lucide-react'
+import { Trash2, UserPlus, Shield, Users, Upload, FileText, Settings, Map, MapPin, Activity } from 'lucide-react'
+import { ClientCourseManager } from '@/components/ClientCourseManager'
+import { EnhancedUserList } from '@/components/EnhancedUserList'
+import HealthMapUploader from '@/components/HealthMapUploader'
 
 const DashboardAdmin = () => {
   const [items, setItems] = useState<Array<{ key?: string, size?: number }>>([])
@@ -274,8 +277,8 @@ const DashboardAdmin = () => {
             Upload Files
           </TabsTrigger>
           <TabsTrigger value="files" className="flex items-center gap-2">
-            <FileText className="h-4 w-4" />
-            Manage Files
+            <Activity className="h-4 w-4" />
+            Upload Health Maps
           </TabsTrigger>
           <TabsTrigger value="clubs" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
@@ -308,30 +311,7 @@ const DashboardAdmin = () => {
         </TabsContent>
         
         <TabsContent value="files">
-          <Card>
-            <CardHeader>
-              <CardTitle>All Files in R2</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {items.map((i, idx) => (
-                  <div key={idx} className="flex items-center justify-between">
-                    <span className="truncate max-w-[70%]">{i.key}</span>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={async () => {
-                          if (!i.key) return
-                          await R2Service.deleteObject(i.key)
-                          load()
-                        }}
-                      >Delete</Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          <HealthMapUploader />
         </TabsContent>
         
         <TabsContent value="clubs">
@@ -357,159 +337,18 @@ const DashboardAdmin = () => {
         
         <TabsContent value="users">
           <div className="space-y-6">
-            {/* Quick Actions */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  User Management
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <Label>User</Label>
-                    <Select value={selectedUser} onValueChange={setSelectedUser}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select user" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {users.map((user) => (
-                          <SelectItem key={user.id} value={user.id}>
-                            {user.email} ({user.role})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Club</Label>
-                    <Select value={selectedClub} onValueChange={setSelectedClub}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select club" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">No club</SelectItem>
-                        {clubs.map((club) => (
-                          <SelectItem key={club.id} value={club.id}>
-                            {club.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex items-end">
-                    <Button onClick={assignUserToClub}>Assign to Club</Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            {/* Client Course Assignment - AT VERY TOP ⭐ */}
+            <ClientCourseManager />
 
-            {/* Users List */}
-            <Card>
-              <CardHeader>
-                <CardTitle>All Users ({users.length})</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {users.map((user) => (
-                    <div key={user.id} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium">{user.email}</span>
-                              <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
-                                {user.role}
-                              </Badge>
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {user.full_name && <span>{user.full_name} • </span>}
-                              {user.club_id ? (
-                                <span>Club: {clubs.find(c => c.id === user.club_id)?.name || 'Unknown'}</span>
-                              ) : (
-                                <span>No club assigned</span>
-                              )}
-                              <span> • Joined: {new Date(user.created_at).toLocaleDateString()}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {editingUser === user.id ? (
-                          <div className="flex items-center gap-2">
-                            <Select value={newUserRole} onValueChange={setNewUserRole}>
-                              <SelectTrigger className="w-32">
-                                <SelectValue placeholder="Role" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="admin">Admin</SelectItem>
-                                <SelectItem value="client">Client</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <Button 
-                              size="sm" 
-                              onClick={() => updateUserRole(user.id, newUserRole)}
-                              disabled={!newUserRole}
-                            >
-                              Save
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              onClick={() => {
-                                setEditingUser(null)
-                                setNewUserRole('')
-                              }}
-                            >
-                              Cancel
-                            </Button>
-                          </div>
-                        ) : (
-                          <>
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              onClick={() => {
-                                setEditingUser(user.id)
-                                setNewUserRole(user.role)
-                              }}
-                            >
-                              Edit Role
-                            </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button size="sm" variant="destructive">
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete User</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Are you sure you want to delete {user.email}? This action cannot be undone.
-                                    All their data will be permanently removed.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() => deleteUser(user.id, user.email)}
-                                    className="bg-red-600 hover:bg-red-700"
-                                  >
-                                    Delete User
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            {/* Enhanced Users List with Multi-Course Display - BELOW */}
+            <EnhancedUserList 
+              users={users} 
+              clubs={clubs} 
+              onUserUpdate={() => {
+                loadUsers()
+                loadClubs()
+              }} 
+            />
           </div>
         </TabsContent>
 

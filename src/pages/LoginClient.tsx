@@ -23,12 +23,55 @@ const LoginClient = () => {
       if (error) throw error
       const userId = data.user?.id
       if (!userId) throw new Error('No user')
-      const { data: me } = await supabase.from('users').select('role, club_id').eq('id', userId).single()
-      if (me?.role !== 'client') {
-        throw new Error('This account is not authorized for golf club access')
+      const { data: me, error: profileError } = await supabase.from('users').select('role, club_id').eq('id', userId).single()
+      
+      if (profileError) {
+        console.error('Profile error:', profileError)
+        throw new Error('Could not load user profile. Please contact support.')
       }
-      navigate('/client')
-      toast({ title: 'Welcome!', description: 'You have successfully logged in to your golf club portal' })
+      
+      if (!me || me.role !== 'client') {
+        // Sign out the user since they're not a client
+        await supabase.auth.signOut()
+        throw new Error('This account is not a golf club client. Please use the admin login page if you are an administrator.')
+      }
+      
+      // Check how many courses this client has access to
+      const { data: courseAssignments } = await supabase
+        .from('client_golf_courses')
+        .select('golf_club_id')
+        .eq('client_id', userId)
+        .eq('is_active', true)
+      
+      const courseCount = courseAssignments?.length || 0
+      
+      if (courseCount === 0) {
+        // No courses assigned - show error
+        toast({ 
+          title: 'No Access', 
+          description: 'You have not been assigned to any golf courses. Please contact your administrator.',
+          variant: 'destructive' 
+        })
+        await supabase.auth.signOut()
+      } else if (courseCount === 1) {
+        // Only one course - go directly to client dashboard
+        const courseId = courseAssignments![0].golf_club_id
+        const { data: courseData } = await supabase
+          .from('golf_clubs')
+          .select('name')
+          .eq('id', courseId)
+          .single()
+        
+        sessionStorage.setItem('selectedGolfCourseId', courseId)
+        sessionStorage.setItem('selectedGolfCourseName', courseData?.name || '')
+        
+        navigate('/client')
+        toast({ title: 'Welcome!', description: `Logged in to ${courseData?.name || 'your golf club'}` })
+      } else {
+        // Multiple courses - go to course selection page
+        navigate('/select-course')
+        toast({ title: 'Welcome!', description: 'Please select a golf course to continue' })
+      }
     } catch (e) {
       toast({ 
         title: 'Login Failed', 

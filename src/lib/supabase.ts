@@ -92,20 +92,49 @@ export interface Database {
         Row: {
           id: string
           name: string
+          client_id: string | null
           created_at: string
           updated_at: string
         }
         Insert: {
           id?: string
           name: string
+          client_id?: string | null
           created_at?: string
           updated_at?: string
         }
         Update: {
           id?: string
           name?: string
+          client_id?: string | null
           created_at?: string
           updated_at?: string
+        }
+      }
+      client_golf_courses: {
+        Row: {
+          id: string
+          client_id: string
+          golf_club_id: string
+          assigned_at: string
+          assigned_by: string | null
+          is_active: boolean
+        }
+        Insert: {
+          id?: string
+          client_id: string
+          golf_club_id: string
+          assigned_at?: string
+          assigned_by?: string | null
+          is_active?: boolean
+        }
+        Update: {
+          id?: string
+          client_id?: string
+          golf_club_id?: string
+          assigned_at?: string
+          assigned_by?: string | null
+          is_active?: boolean
         }
       }
       images: {

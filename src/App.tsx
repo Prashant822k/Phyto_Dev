@@ -12,6 +12,7 @@ import LoginAdmin from "./pages/LoginAdmin";
 import LoginClient from "./pages/LoginClient";
 import DashboardAdmin from "./pages/DashboardAdmin";
 import DashboardClient from "./pages/DashboardClient";
+import CourseSelection from "./pages/CourseSelection";
 import TestUpload from "./pages/TestUpload";
 import TileUploadPage from "./pages/TileUploadPage";
 import TestLayers from "./pages/TestLayers";
@@ -129,6 +130,7 @@ const App = () => {
             <Route path="/dashboard" element={<DashboardWrapper />} />
             <Route path="/login-admin" element={<LoginAdmin />} />
             <Route path="/login-client" element={<LoginClient />} />
+            <Route path="/select-course" element={<RequireRole role="client"><CourseSelection /></RequireRole>} />
             <Route path="/admin" element={<RequireRole role="admin"><DashboardAdmin /></RequireRole>} />
             <Route path="/client" element={<RequireRole role="client"><DashboardClient /></RequireRole>} />
             <Route path="/test-upload" element={<TestUpload />} />

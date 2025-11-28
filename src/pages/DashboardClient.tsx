@@ -1,12 +1,15 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { useNavigate } from 'react-router-dom'
+import { ClientCourseService } from '@/lib/clientCourseService'
 import { ImageService } from '@/lib/imageService'
 import MapboxGolfCourseMap from '@/components/MapboxGolfCourseMap'
 import VectorLayerOverlayMap from '@/components/VectorLayerOverlayMap'
 import VectorLayerComparison from '@/components/VectorLayerComparison'
+import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { MapPin, Image as ImageIcon } from 'lucide-react'
+import { MapPin, RefreshCw, Image as ImageIcon } from 'lucide-react'
 import mapboxgl from 'mapbox-gl'
 
 const DashboardClient = () => {
@@ -14,6 +17,8 @@ const DashboardClient = () => {
   const [golfClubId, setGolfClubId] = useState<string | null>(null)
   const [golfClubName, setGolfClubName] = useState<string>('')
   const [loading, setLoading] = useState(true)
+  const [hasMultipleCourses, setHasMultipleCourses] = useState(false)
+  const navigate = useNavigate()
 
   const load = async () => {
     setLoading(true)
@@ -22,18 +27,32 @@ const DashboardClient = () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // Get user's profile to find their club_id
-      const { data: profile } = await supabase
-        .from('users')
-        .select('club_id, golf_clubs(id, name)')
-        .eq('id', user.id)
-        .single()
+      // Check if a course was selected (from course selection page or single-course login)
+      const selectedCourseId = sessionStorage.getItem('selectedGolfCourseId')
+      const selectedCourseName = sessionStorage.getItem('selectedGolfCourseName')
 
-      if (profile?.club_id) {
-        setGolfClubId(profile.club_id)
-        // @ts-ignore - golf_clubs is joined data
-        setGolfClubName(profile.golf_clubs?.name || '')
+      if (selectedCourseId && selectedCourseName) {
+        // Use the selected course
+        setGolfClubId(selectedCourseId)
+        setGolfClubName(selectedCourseName)
+      } else {
+        // Fallback: Get user's profile to find their club_id (legacy support)
+        const { data: profile } = await supabase
+          .from('users')
+          .select('club_id, golf_clubs(id, name)')
+          .eq('id', user.id)
+          .single()
+
+        if (profile?.club_id) {
+          setGolfClubId(profile.club_id)
+          // @ts-ignore - golf_clubs is joined data
+          setGolfClubName(profile.golf_clubs?.name || '')
+        }
       }
+
+      // Check if user has multiple courses
+      const courseCount = await ClientCourseService.getClientCourseCount(user.id)
+      setHasMultipleCourses(courseCount > 1)
 
       // Fetch images - only show images uploaded by the current user
       // (clients shouldn't see other users' images)
@@ -124,13 +143,23 @@ const DashboardClient = () => {
             View your course map and processed imagery
           </p>
         </div>
+        {hasMultipleCourses && (
+          <Button 
+            variant="outline" 
+            onClick={() => navigate('/select-course')}
+            className="flex items-center space-x-2"
+          >
+            <RefreshCw className="h-4 w-4" />
+            <span>Switch Course</span>
+          </Button>
+        )}
       </div>
 
-      {/* Golf Course Maps - Side by Side */}
+      {/* Three Section Layout */}
       {golfClubId && mapboxToken ? (
         <>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Raster Tileset Map */}
+          {/* Section 1: Golf Course Map with PNG Tiles (Full Width) */}
+          <div className="w-full">
             <MapboxGolfCourseMap
               golfClubId={golfClubId}
               mapboxAccessToken={mapboxToken}
@@ -141,8 +170,10 @@ const DashboardClient = () => {
                 setupMapSync();
               }}
             />
-            
-            {/* Vector Layer Overlay Map */}
+          </div>
+
+          {/* Section 2: Vector Layer Overlay Map (Full Width) */}
+          <div className="w-full">
             <VectorLayerOverlayMap
               golfClubId={golfClubId}
               mapboxAccessToken={mapboxToken}
@@ -155,7 +186,7 @@ const DashboardClient = () => {
             />
           </div>
 
-          {/* Vector Layer Comparison - Below Maps */}
+          {/* Section 3: Vector Layer Comparison - Side by Side */}
           <VectorLayerComparison
             golfClubId={golfClubId}
             mapboxAccessToken={mapboxToken}
