@@ -20,6 +20,7 @@ interface SignedUrlRequest {
   courseId?: string;
   flightDate?: string; // YYYY-MM-DD
   flightTime?: string; // HH:MM
+  pathType?: 'tiles' | 'health_maps'; // Type of tiles being uploaded
 }
 
 // --- AWS4 / Crypto helpers ---
@@ -318,37 +319,50 @@ serve(async (req) => {
         
         // Extract r2_folder_path from key
         // Key format: "course/2024-11-05/14-30/tiles/15/5242/12663.png" or "course/tiles/15/5242/12663.png"
+        // Or health maps: "course/health_maps/2025-11-29/12-35/15/5242/12663.png"
         // We need to extract everything before the z/x/y.png part
         const keyParts = body.key.split('/');
         let r2FolderPath = '';
+        let isHealthMap = false;
         
-        // Find the "tiles" folder and extract path up to and including it
-        const tilesIndex = keyParts.indexOf('tiles');
-        if (tilesIndex !== -1) {
-          r2FolderPath = keyParts.slice(0, tilesIndex + 1).join('/');
-        } else {
-          // Fallback: assume last 3 parts are z/x/y.png
+        // Check if this is a health map
+        if (keyParts.includes('health_maps')) {
+          // For health maps: extract up to the time folder (before z/x/y)
+          // Format: course/health_maps/date/time/z/x/y.png
+          // We want: course/health_maps/date/time
           r2FolderPath = keyParts.slice(0, -3).join('/');
+          isHealthMap = true;
+        } else {
+          // Find the "tiles" folder and extract path up to and including it
+          const tilesIndex = keyParts.indexOf('tiles');
+          if (tilesIndex !== -1) {
+            r2FolderPath = keyParts.slice(0, tilesIndex + 1).join('/');
+          } else {
+            // Fallback: assume last 3 parts are z/x/y.png
+            r2FolderPath = keyParts.slice(0, -3).join('/');
+          }
         }
         
-        console.log('getTile - key:', body.key, 'r2FolderPath:', r2FolderPath);
+        console.log('getTile - key:', body.key, 'r2FolderPath:', r2FolderPath, 'isHealthMap:', isHealthMap);
         
         // Verify access - find tileset by r2_folder_path
+        const tableName = isHealthMap ? 'health_map_tilesets' : 'golf_course_tilesets';
         const { data: tileset, error: tilesetErr } = await supabase
-          .from('golf_course_tilesets')
+          .from(tableName)
           .select('golf_club_id')
           .eq('r2_folder_path', r2FolderPath)
           .single();
         
-        console.log('getTile - tileset:', tileset, 'error:', tilesetErr, 'userId:', me.id);
+        console.log('getTile - tileset:', tileset, 'error:', tilesetErr, 'userId:', me.id, 'table:', tableName);
         
         if (tilesetErr || !tileset) {
-          console.error('getTile - Tileset not found for r2_folder_path:', r2FolderPath);
+          console.error('getTile - Tileset not found for r2_folder_path:', r2FolderPath, 'in table:', tableName);
           console.error('getTile - Error details:', JSON.stringify(tilesetErr));
           return new Response(JSON.stringify({ 
             error: 'Tileset not found', 
             r2_folder_path: r2FolderPath,
-            key: body.key 
+            key: body.key,
+            table: tableName
           }), { 
             status: 404, 
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -428,11 +442,17 @@ serve(async (req) => {
         }
 
         // Construct R2 path based on whether date/time is provided
+        const folderType = body.pathType || 'tiles'; // Default to 'tiles' for backward compatibility
         let basePath: string;
         if (body.flightDate && body.flightTime) {
           // New format: courseId/YYYY-MM-DD/HH-MM/tiles/z/x/y.png
+          // Or for health maps: courseId/health_maps/YYYY-MM-DD/HH-MM/z/x/y.png
           const formattedTime = body.flightTime.replace(':', '-');
-          basePath = `${body.courseId}/${body.flightDate}/${formattedTime}/tiles`;
+          if (folderType === 'health_maps') {
+            basePath = `${body.courseId}/health_maps/${body.flightDate}/${formattedTime}`;
+          } else {
+            basePath = `${body.courseId}/${body.flightDate}/${formattedTime}/tiles`;
+          }
         } else {
           // Legacy format: courseId/tiles/z/x/y.png
           basePath = `${body.courseId}/tiles`;

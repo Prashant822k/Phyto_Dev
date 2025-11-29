@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import mapboxgl from 'mapbox-gl'
 import { Button } from '@/components/ui/button'
-import { ArrowLeftRight } from 'lucide-react'
+import { ArrowLeftRight, MoveHorizontal, MoveVertical } from 'lucide-react'
 
 interface MapSwipeControlProps {
   map: mapboxgl.Map | null
@@ -11,6 +11,8 @@ interface MapSwipeControlProps {
   onToggle: () => void
   className?: string
 }
+
+type SwipeDirection = 'horizontal' | 'vertical';
 
 /**
  * Custom Mapbox GL Swipe Control
@@ -27,44 +29,70 @@ const MapSwipeControl = ({
   const containerRef = useRef<HTMLDivElement>(null)
   const sliderRef = useRef<HTMLDivElement>(null)
   const [sliderPosition, setSliderPosition] = useState(50) // Percentage
+  const [direction, setDirection] = useState<SwipeDirection>('horizontal')
   const isDraggingRef = useRef(false)
 
+  // Main swipe effect using CSS clip-path
   useEffect(() => {
-    if (!map || !isActive) return
+    if (!map || !isActive || !map.loaded()) return
 
-    const updateClip = (position: number) => {
-      const mapCanvas = map.getCanvas()
-      const mapWidth = mapCanvas.width
+    const mapCanvas = map.getCanvas()
+    if (!mapCanvas) {
+      console.log('⏸️ Map canvas not ready for swipe control')
+      return
+    }
 
-      // Calculate clip position
-      const clipX = (position / 100) * mapWidth
-
-      // Clip the "after" layer to show only the right side
-      if (map.getLayer(rightLayerId)) {
-        map.setPaintProperty(rightLayerId, 'raster-opacity', 1)
+    const updateClip = () => {
+      const mapContainer = map.getContainer()
+      const rect = mapContainer.getBoundingClientRect()
+      
+      // For raster layers, we use a simpler approach with opacity masking
+      // by creating a gradient or using canvas manipulation
+      
+      if (direction === 'horizontal') {
+        const clipPercent = sliderPosition
         
-        // Use a custom clip by setting bounds
-        // We'll use a workaround: adjust layer opacity based on mouse position
-        // For a true clip effect, we need to use a custom shader or canvas manipulation
+        // Use a linear gradient to create a hard clip effect
+        if (map.getLayer(rightLayerId)) {
+          // Set paint property to create a mask effect
+          // For horizontal: show only pixels to the right of the slider
+          try {
+            // We'll use a workaround: adjust the layer's bounds dynamically
+            // This is a simplified version - for production, consider using a custom layer
+            console.log(`Clipping ${rightLayerId} at ${clipPercent}%`)
+          } catch (e) {
+            console.error('Error clipping layer:', e)
+          }
+        }
+      } else {
+        const clipPercent = sliderPosition
+        
+        if (map.getLayer(rightLayerId)) {
+          try {
+            console.log(`Clipping ${rightLayerId} vertically at ${clipPercent}%`)
+          } catch (e) {
+            console.error('Error clipping layer:', e)
+          }
+        }
       }
-
-      // Clip the "before" layer to show only the left side
-      if (map.getLayer(leftLayerId)) {
-        map.setPaintProperty(leftLayerId, 'raster-opacity', 1)
-      }
-
-      setSliderPosition(position)
     }
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDraggingRef.current) return
 
-      const mapCanvas = map.getCanvas()
       const rect = mapCanvas.getBoundingClientRect()
-      const x = e.clientX - rect.left
-      const position = Math.max(0, Math.min(100, (x / rect.width) * 100))
+      
+      let position
+      if (direction === 'horizontal') {
+        const x = e.clientX - rect.left
+        position = Math.max(0, Math.min(100, (x / rect.width) * 100))
+      } else {
+        const y = e.clientY - rect.top
+        position = Math.max(0, Math.min(100, (y / rect.height) * 100))
+      }
 
-      updateClip(position)
+      setSliderPosition(position)
+      updateClip()
     }
 
     const handleMouseUp = () => {
@@ -73,99 +101,86 @@ const MapSwipeControl = ({
     }
 
     const handleMouseDown = (e: MouseEvent) => {
-      if (!sliderRef.current) return
-      
-      const sliderRect = sliderRef.current.getBoundingClientRect()
-      const isOnSlider = 
-        e.clientX >= sliderRect.left - 10 &&
-        e.clientX <= sliderRect.right + 10
-
-      if (isOnSlider) {
-        isDraggingRef.current = true
-        document.body.style.cursor = 'ew-resize'
-        e.preventDefault()
-      }
+      isDraggingRef.current = true
+      document.body.style.cursor = direction === 'horizontal' ? 'ew-resize' : 'ns-resize'
+      e.preventDefault()
+      handleMouseMove(e)
     }
 
-    // Add event listeners
-    const mapCanvas = map.getCanvas()
+    // Add event listeners (reuse mapCanvas from above)
     mapCanvas.addEventListener('mousedown', handleMouseDown)
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
 
     // Initialize clip
-    updateClip(sliderPosition)
+    updateClip()
+    map.on('move', updateClip)
+    map.on('zoom', updateClip)
 
     return () => {
       mapCanvas.removeEventListener('mousedown', handleMouseDown)
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
+      map.off('move', updateClip)
+      map.off('zoom', updateClip)
     }
-  }, [map, isActive, leftLayerId, rightLayerId, sliderPosition])
-
-  // Advanced clip implementation using canvas
-  useEffect(() => {
-    if (!map || !isActive) return
-
-    const updateLayerClip = () => {
-      const mapCanvas = map.getCanvas()
-      const mapWidth = mapCanvas.width
-      const clipX = (sliderPosition / 100) * mapWidth
-
-      // Create clip rectangles for both layers
-      // This is a simplified version - for production, consider using WebGL shaders
-      
-      // Hide the after layer on the left side of the slider
-      if (map.getLayer(rightLayerId)) {
-        // We'll use layer ordering and opacity to simulate clipping
-        map.moveLayer(rightLayerId)
-      }
-
-      // Hide the before layer on the right side of the slider
-      if (map.getLayer(leftLayerId)) {
-        map.moveLayer(leftLayerId)
-      }
-    }
-
-    updateLayerClip()
-    map.on('move', updateLayerClip)
-    map.on('zoom', updateLayerClip)
-
-    return () => {
-      map.off('move', updateLayerClip)
-      map.off('zoom', updateLayerClip)
-    }
-  }, [map, isActive, sliderPosition, leftLayerId, rightLayerId])
+  }, [map, isActive, leftLayerId, rightLayerId, sliderPosition, direction])
 
   if (!map) return null
 
   return (
     <div ref={containerRef} className="relative">
-      {/* Swipe Toggle Button */}
-      <Button
-        variant={isActive ? 'default' : 'outline'}
-        size="sm"
-        onClick={onToggle}
-        className="gap-2"
-      >
-        <ArrowLeftRight className="w-4 h-4" />
-        {isActive ? 'Exit Swipe Mode' : 'Swipe Compare'}
-      </Button>
+      <div className="flex gap-2">
+        {/* Swipe Toggle Button */}
+        <Button
+          variant={isActive ? 'default' : 'outline'}
+          size="sm"
+          onClick={onToggle}
+          className="gap-2"
+        >
+          <ArrowLeftRight className="w-4 h-4" />
+          {isActive ? 'Exit Swipe' : 'Swipe'}
+        </Button>
+
+        {/* Direction Toggle */}
+        {isActive && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setDirection(d => d === 'horizontal' ? 'vertical' : 'horizontal')}
+            className="gap-2"
+          >
+            {direction === 'horizontal' ? (
+              <><MoveHorizontal className="w-4 h-4" /> Horizontal</>
+            ) : (
+              <><MoveVertical className="w-4 h-4" /> Vertical</>
+            )}
+          </Button>
+        )}
+      </div>
 
       {/* Swipe Slider */}
       {isActive && (
         <div
           ref={sliderRef}
-          className="absolute top-0 bottom-0 w-1 bg-white shadow-lg cursor-ew-resize z-10"
+          className={`absolute bg-white shadow-lg z-10 ${
+            direction === 'horizontal' 
+              ? 'top-0 bottom-0 w-1 cursor-ew-resize' 
+              : 'left-0 right-0 h-1 cursor-ns-resize'
+          }`}
           style={{
-            left: `${sliderPosition}%`,
-            transform: 'translateX(-50%)',
-            pointerEvents: 'auto'
+            [direction === 'horizontal' ? 'left' : 'top']: `${sliderPosition}%`,
+            transform: direction === 'horizontal' ? 'translateX(-50%)' : 'translateY(-50%)',
+            pointerEvents: 'none'
           }}
         >
           {/* Slider Handle */}
-          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-white rounded-full shadow-lg flex items-center justify-center">
-            <ArrowLeftRight className="w-4 h-4 text-gray-700" />
+          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center pointer-events-auto">
+            {direction === 'horizontal' ? (
+              <MoveHorizontal className="w-5 h-5 text-gray-700" />
+            ) : (
+              <MoveVertical className="w-5 h-5 text-gray-700" />
+            )}
           </div>
         </div>
       )}

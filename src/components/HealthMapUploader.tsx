@@ -7,7 +7,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Activity, Upload, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { TileUploader } from '@/lib/tile-upload';
 
 interface SourceTileset {
   id: string;
@@ -67,7 +66,11 @@ export default function HealthMapUploader() {
   // Generate R2 path preview
   const getR2Path = () => {
     if (!selectedSource || !analysisDate || !analysisTime) return '';
-    return `${selectedSource.golf_club_id}/health_maps/${analysisDate}/${analysisTime}`;
+    // Extract course name from r2_folder_path (e.g., "test21/2025-11-24/17-30/tiles" -> "test21")
+    const courseName = selectedSource.r2_folder_path.split('/')[0];
+    // Replace colons with dashes in time for R2 path
+    const formattedTime = analysisTime.replace(/:/g, '-');
+    return `${courseName}/health_maps/${analysisDate}/${formattedTime}`;
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -93,14 +96,11 @@ export default function HealthMapUploader() {
 
       const r2FolderPath = getR2Path();
       
-      // Upload tiles to R2
-      const uploader = new TileUploader(
-        selectedSource.golf_club_id,
-        analysisDate,
-        analysisTime
-      );
+      // Extract course name from r2_folder_path
+      const courseName = selectedSource.r2_folder_path.split('/')[0];
       
       const files = Array.from(selectedFiles);
+      const tiles: Array<{ z: number; x: number; y: number }> = [];
       const tilesWithBlobs: Array<{ z: number; x: number; y: number; blob: Blob }> = [];
 
       // Prepare tiles array
@@ -110,18 +110,65 @@ export default function HealthMapUploader() {
         if (!pathMatch) continue;
 
         const [, z, x, y] = pathMatch;
+        const coord = { z: parseInt(z), x: parseInt(x), y: parseInt(y) };
+        tiles.push(coord);
         tilesWithBlobs.push({
-          z: parseInt(z),
-          x: parseInt(x),
-          y: parseInt(y),
+          ...coord,
           blob: file
         });
       }
 
-      // Upload tiles in batch
-      await uploader.uploadTiles(tilesWithBlobs, (progress) => {
-        setUploadProgress(progress.percentage);
+      // Get presigned URLs for health maps
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const response = await fetch(`${supabaseUrl}/functions/v1/r2-sign`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ 
+          action: 'getBatchPutUrls',
+          courseId: courseName, 
+          tiles: tiles,
+          flightDate: analysisDate,
+          flightTime: analysisTime,
+          pathType: 'health_maps' // Important: use health_maps path
+        }),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Upload URL generation failed: ${response.status} ${errorData.error || response.statusText}`);
+      }
+
+      const { urls } = await response.json();
+      
+      if (!urls || !Array.isArray(urls)) {
+        throw new Error('Invalid response: missing urls array');
+      }
+
+      // Upload tiles in parallel
+      const concurrency = 30;
+      let uploaded = 0;
+
+      for (let i = 0; i < tilesWithBlobs.length; i += concurrency) {
+        const batch = tilesWithBlobs.slice(i, i + concurrency);
+        const urlBatch = urls.slice(i, i + concurrency);
+
+        await Promise.all(
+          batch.map((tile, idx) => {
+            const tileInfo = urlBatch[idx];
+            return fetch(tileInfo.url, {
+              method: 'PUT',
+              body: tile.blob,
+              headers: { 'Content-Type': 'image/png' },
+            }).then(() => {
+              uploaded++;
+              setUploadProgress(Math.round((uploaded / tilesWithBlobs.length) * 100));
+            });
+          })
+        );
+      }
 
       // Create health map tileset record in database
       const { error: dbError } = await supabase
