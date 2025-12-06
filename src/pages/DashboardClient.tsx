@@ -5,12 +5,10 @@ import { useNavigate } from 'react-router-dom'
 import { ClientCourseService } from '@/lib/clientCourseService'
 import { ImageService } from '@/lib/imageService'
 import MapboxGolfCourseMap from '@/components/MapboxGolfCourseMap'
-import VectorLayerOverlayMap from '@/components/VectorLayerOverlayMap'
 import VectorLayerComparison from '@/components/VectorLayerComparison'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { MapPin, RefreshCw, Image as ImageIcon } from 'lucide-react'
-import mapboxgl from 'mapbox-gl'
 
 const DashboardClient = () => {
   const [images, setImages] = useState<Array<any>>([])
@@ -74,65 +72,6 @@ const DashboardClient = () => {
 
   const mapboxToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
 
-  // Map references for synchronization
-  const rasterMapRef = useRef<mapboxgl.Map | null>(null)
-  const vectorMapRef = useRef<mapboxgl.Map | null>(null)
-  const isSyncing = useRef(false)
-
-  // Setup map synchronization
-  const setupMapSync = () => {
-    if (!rasterMapRef.current || !vectorMapRef.current) return;
-    if (rasterMapRef.current.getContainer().dataset.syncSetup === 'true') return;
-
-    const syncMaps = (source: mapboxgl.Map, target: mapboxgl.Map) => {
-      if (isSyncing.current) return;
-      isSyncing.current = true;
-
-      // Use setCenter and setZoom instead of jumpTo for smoother sync
-      const sourceCenter = source.getCenter();
-      const sourceZoom = source.getZoom();
-      const targetCenter = target.getCenter();
-      const targetZoom = target.getZoom();
-
-      // Only sync if there's a meaningful difference
-      const centerDiff = Math.abs(sourceCenter.lng - targetCenter.lng) + Math.abs(sourceCenter.lat - targetCenter.lat);
-      const zoomDiff = Math.abs(sourceZoom - targetZoom);
-
-      if (centerDiff > 0.00001 || zoomDiff > 0.01) {
-        target.jumpTo({
-          center: sourceCenter,
-          zoom: sourceZoom,
-          bearing: source.getBearing(),
-          pitch: source.getPitch()
-        });
-      }
-
-      setTimeout(() => {
-        isSyncing.current = false;
-      }, 100);
-    };
-
-    // Sync raster map to vector map
-    rasterMapRef.current.on('move', () => {
-      if (rasterMapRef.current && vectorMapRef.current && !isSyncing.current) {
-        syncMaps(rasterMapRef.current, vectorMapRef.current);
-      }
-    });
-
-    // Sync vector map to raster map
-    vectorMapRef.current.on('move', () => {
-      if (vectorMapRef.current && rasterMapRef.current && !isSyncing.current) {
-        syncMaps(vectorMapRef.current, rasterMapRef.current);
-      }
-    });
-
-    // Mark as setup
-    rasterMapRef.current.getContainer().dataset.syncSetup = 'true';
-    vectorMapRef.current.getContainer().dataset.syncSetup = 'true';
-
-    console.log('✅ Map synchronization enabled');
-  };
-
   return (
     <div className="container mx-auto py-6 space-y-6">
       {/* Welcome Section */}
@@ -155,38 +94,20 @@ const DashboardClient = () => {
         )}
       </div>
 
-      {/* Three Section Layout */}
+      {/* Two Section Layout */}
       {golfClubId && mapboxToken ? (
         <>
-          {/* Section 1: Golf Course Map with PNG Tiles (Full Width) */}
+          {/* Section 1: Main Golf Course Map with Raster, Health, and Vector Layers */}
           <div className="w-full">
             <MapboxGolfCourseMap
               golfClubId={golfClubId}
               mapboxAccessToken={mapboxToken}
               showControls={true}
               className="w-full"
-              onMapReady={(map) => {
-                rasterMapRef.current = map;
-                setupMapSync();
-              }}
             />
           </div>
 
-          {/* Section 2: Vector Layer Overlay Map (Full Width) */}
-          <div className="w-full">
-            <VectorLayerOverlayMap
-              golfClubId={golfClubId}
-              mapboxAccessToken={mapboxToken}
-              showControls={true}
-              className="w-full"
-              onMapReady={(map) => {
-                vectorMapRef.current = map;
-                setupMapSync();
-              }}
-            />
-          </div>
-
-          {/* Section 3: Vector Layer Comparison - Side by Side */}
+          {/* Section 2: Vector Layer Comparison - Side by Side */}
           <VectorLayerComparison
             golfClubId={golfClubId}
             mapboxAccessToken={mapboxToken}
