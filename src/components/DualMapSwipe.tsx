@@ -95,36 +95,21 @@ export const DualMapSwipe = ({
 
       // Wait for style to fully load before modifying layers
       rightMap.once('idle', () => {
-        console.log('🎯 Right map idle, applying swipe layer removal');
+        console.log('🎯 Right map idle, initial setup complete');
         
-        // If no layerId, all layers will be synced normally
-        if (!layerId) {
-          console.log('⚠️ No swipe layer selected, sync will handle layer visibility');
-          return;
-        }
-        
-        // Remove the swipe target layer from right map to show what's beneath
-        // Vector layers should NEVER be removed (they stay on both sides)
-        if (layerId.startsWith('vector-layer-')) {
-          console.log(`✅ Vector layer ${layerId} - keeping visible on both sides (not removed)`);
-          return;
-        }
-        
-        // Remove health map or raster layer
-        if (rightMap.getLayer(layerId)) {
-          try {
-            rightMap.removeLayer(layerId);
-            console.log(`🗑️ Removed swipe target ${layerId} from right map`);
-          } catch (error) {
-            console.warn(`Could not remove layer ${layerId}:`, error);
-            // Fallback: hide it instead
-            try {
-              rightMap.setLayoutProperty(layerId, 'visibility', 'none');
-              console.log(`👁️ Hidden ${layerId} from right map (fallback)`);
-            } catch (e) {
-              console.warn(`Could not hide layer ${layerId}:`, e);
+        // Hide ALL vector layers on right map (they should only show on left/main map)
+        const rightStyle = rightMap.getStyle();
+        if (rightStyle && rightStyle.layers) {
+          rightStyle.layers.forEach((layer: any) => {
+            if (layer.id.startsWith('vector-layer-')) {
+              try {
+                rightMap.setLayoutProperty(layer.id, 'visibility', 'none');
+                console.log(`👁️ Hidden vector layer ${layer.id} on right map`);
+              } catch (e) {
+                console.warn(`Could not hide vector layer ${layer.id}:`, e);
+              }
             }
-          }
+          });
         }
       });
 
@@ -179,7 +164,53 @@ export const DualMapSwipe = ({
         rightMapRef.current = null;
       }
     };
-  }, [enabled, map, layerId, mapboxAccessToken]);
+  }, [enabled, map, mapboxAccessToken]);
+
+  // Handle swipe target layer changes (without recreating the map)
+  useEffect(() => {
+    if (!enabled || !rightMapRef.current) return;
+    
+    const rightMap = rightMapRef.current;
+    if (!rightMap.loaded() || !rightMap.isStyleLoaded()) {
+      // Wait for map to be ready
+      rightMap.once('idle', () => {
+        handleSwipeTargetChange(rightMap, layerId);
+      });
+      return;
+    }
+    
+    handleSwipeTargetChange(rightMap, layerId);
+  }, [enabled, layerId]);
+
+  // Helper function to update swipe target on right map
+  const handleSwipeTargetChange = (rightMap: mapboxgl.Map, targetLayerId: string | null) => {
+    console.log(`🎯 Updating swipe target to: ${targetLayerId}`);
+    
+    // First, restore visibility of all health map layers (they might have been hidden before)
+    const rightStyle = rightMap.getStyle();
+    if (rightStyle && rightStyle.layers) {
+      rightStyle.layers.forEach((layer: any) => {
+        if (layer.id.startsWith('health-map-layer-')) {
+          try {
+            // Show all health map layers first
+            rightMap.setLayoutProperty(layer.id, 'visibility', 'visible');
+          } catch (e) {
+            // Layer might not exist
+          }
+        }
+      });
+    }
+    
+    // Now hide the current swipe target
+    if (targetLayerId && rightMap.getLayer(targetLayerId)) {
+      try {
+        rightMap.setLayoutProperty(targetLayerId, 'visibility', 'none');
+        console.log(`👁️ Hidden swipe target ${targetLayerId} on right map`);
+      } catch (e) {
+        console.warn(`Could not hide swipe target ${targetLayerId}:`, e);
+      }
+    }
+  };
 
   // Synchronize layer changes from main map to right map
   useEffect(() => {
@@ -198,20 +229,18 @@ export const DualMapSwipe = ({
       const rightStyle = rightMap.getStyle();
       if (!rightStyle || !rightStyle.layers) return;
 
-      // 1. Sync vector layer visibility (vectors should always match main map)
+      // 1. Keep vector layers HIDDEN on right map (they only show on left/main map for clipping effect)
       mainStyle.layers.forEach((layer: any) => {
         if (layer.id.startsWith('vector-layer-')) {
-          const visibility = layer.layout?.visibility || 'visible';
-          
           if (rightMap.getLayer(layer.id)) {
             try {
               const currentVisibility = rightMap.getLayoutProperty(layer.id, 'visibility');
-              if (currentVisibility !== visibility) {
-                rightMap.setLayoutProperty(layer.id, 'visibility', visibility);
-                console.log(`🔄 Synced vector ${layer.id} visibility: ${visibility}`);
+              if (currentVisibility !== 'none') {
+                rightMap.setLayoutProperty(layer.id, 'visibility', 'none');
+                console.log(`👁️ Keeping vector ${layer.id} hidden on right map`);
               }
             } catch (e) {
-              console.warn(`Could not sync layer ${layer.id}:`, e);
+              console.warn(`Could not hide layer ${layer.id}:`, e);
             }
           }
         }
@@ -224,9 +253,20 @@ export const DualMapSwipe = ({
              layer.id.startsWith('vector-layer-')) && 
             !mainLayerIds.has(layer.id)) {
           try {
+            const sourceId = layer.source;
             if (rightMap.getLayer(layer.id)) {
               rightMap.removeLayer(layer.id);
               console.log(`🗑️ Removed orphaned layer ${layer.id} from right map`);
+            }
+            // Also remove the source if it exists and no other layer uses it
+            if (sourceId && rightMap.getSource(sourceId)) {
+              // Check if any other layer uses this source
+              const rightLayers = rightMap.getStyle()?.layers || [];
+              const sourceInUse = rightLayers.some((l: any) => l.source === sourceId && l.id !== layer.id);
+              if (!sourceInUse) {
+                rightMap.removeSource(sourceId);
+                console.log(`🗑️ Removed orphaned source ${sourceId} from right map`);
+              }
             }
           } catch (e) {
             console.warn(`Could not remove layer ${layer.id}:`, e);
@@ -269,18 +309,15 @@ export const DualMapSwipe = ({
             if (rightMap.getSource(sourceId)) {
               // Clone the layer definition
               const layerDef = JSON.parse(JSON.stringify(layer));
-              rightMap.addLayer(layerDef);
-              console.log(`➕ Added layer ${layer.id} to right map`);
               
-              // Ensure vector layers are on top
+              // Vector layers should be added but hidden on right map
               if (layer.id.startsWith('vector-layer-')) {
-                try {
-                  rightMap.moveLayer(layer.id);
-                  console.log(`📌 Moved ${layer.id} to top on right map`);
-                } catch (e) {
-                  // Ignore move errors
-                }
+                if (!layerDef.layout) layerDef.layout = {};
+                layerDef.layout.visibility = 'none';
               }
+              
+              rightMap.addLayer(layerDef);
+              console.log(`➕ Added layer ${layer.id} to right map${layer.id.startsWith('vector-layer-') ? ' (hidden)' : ''}`);
             }
           } catch (e) {
             console.warn(`Could not add layer ${layer.id} to right map:`, e);
