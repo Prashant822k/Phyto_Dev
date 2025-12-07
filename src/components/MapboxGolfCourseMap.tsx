@@ -81,6 +81,7 @@ const MapboxGolfCourseMap = ({
   // Layer swipe control
   const [swipeEnabled, setSwipeEnabled] = useState(false);
   const [swipeLayerId, setSwipeLayerId] = useState<string | null>(null);
+  const lastSwipeLayerRef = useRef<string | null>(null);
 
   mapboxgl.accessToken = mapboxAccessToken;
 
@@ -606,15 +607,20 @@ const MapboxGolfCourseMap = ({
     if (showHealthMaps && selectedHealthMapIds.length > 0) {
       const topHealthMapId = selectedHealthMapIds[selectedHealthMapIds.length - 1];
       const topLayerId = `health-map-layer-${topHealthMapId}`;
-      if (map.current?.getLayer(topLayerId)) {
+      if (map.current?.getLayer(topLayerId) && lastSwipeLayerRef.current !== topLayerId) {
+        lastSwipeLayerRef.current = topLayerId;
         setSwipeLayerId(topLayerId);
         console.log('🎚️ Swipe layer set to:', topLayerId);
       }
     } else if (rasterLayersLoaded && selectedLayers.length > 0) {
       const layerId = `tileset-layer-${selectedLayers[0]}`;
-      setSwipeLayerId(layerId);
-      console.log('🎚️ Swipe layer set to:', layerId);
-    } else {
+      if (lastSwipeLayerRef.current !== layerId) {
+        lastSwipeLayerRef.current = layerId;
+        setSwipeLayerId(layerId);
+        console.log('🎚️ Swipe layer set to:', layerId);
+      }
+    } else if (lastSwipeLayerRef.current !== null) {
+      lastSwipeLayerRef.current = null;
       setSwipeLayerId(null);
       console.log('🎚️ No layer available for swipe');
     }

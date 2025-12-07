@@ -22,30 +22,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 })
 
-// Initialize auth on client load
-const initAuth = async () => {
-  try {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
-      console.log('No active session, creating demo session')
-      await supabase.auth.signInWithPassword({
-        email: 'demo@phytomaps.com',
-        password: 'demo123'
-      }).catch(async () => {
-        // If sign in fails, try to sign up
-        await supabase.auth.signUp({
-          email: 'demo@phytomaps.com',
-          password: 'demo123'
-        })
-      })
-    }
-  } catch (error) {
-    console.error('Auth initialization error:', error)
-  }
-}
-
-// Initialize auth immediately
-initAuth()
+// Note: Auth initialization is handled in App.tsx to avoid multiple GoTrueClient instances
 
 // Make supabase available globally for testing in browser console
 if (typeof window !== 'undefined') {

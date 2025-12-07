@@ -40,24 +40,24 @@ const VectorLayerComparison = ({
   const leftMap = useRef<mapboxgl.Map | null>(null);
   const rightMap = useRef<mapboxgl.Map | null>(null);
   
-  // Ref callbacks to track when containers mount
+  // Ref callbacks to track when containers mount (with guards to prevent duplicate logs)
   const setLeftMapContainer = (node: HTMLDivElement | null) => {
-    if (node) {
+    if (node && leftMapContainer.current !== node) {
       console.log('✅ Left map container mounted');
       leftMapContainer.current = node;
       // Check if both containers are ready
-      if (rightMapContainer.current) {
+      if (rightMapContainer.current && !containersReady) {
         setContainersReady(true);
       }
     }
   };
   
   const setRightMapContainer = (node: HTMLDivElement | null) => {
-    if (node) {
+    if (node && rightMapContainer.current !== node) {
       console.log('✅ Right map container mounted');
       rightMapContainer.current = node;
       // Check if both containers are ready
-      if (leftMapContainer.current) {
+      if (leftMapContainer.current && !containersReady) {
         setContainersReady(true);
       }
     }

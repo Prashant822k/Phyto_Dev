@@ -39,6 +39,7 @@ export const DualMapSwipe = ({
   const rightMapContainerRef = useRef<HTMLDivElement>(null);
   const rafIdRef = useRef<number | null>(null);
   const syncingRef = useRef(false);
+  const isCreatingMapRef = useRef(false);
 
   // Initialize right map when swipe is enabled
   useEffect(() => {
@@ -52,12 +53,13 @@ export const DualMapSwipe = ({
       return;
     }
 
-    // Don't create if already exists
-    if (rightMapRef.current) {
-      console.log('⏭️ Right map already exists, skipping creation');
+    // Don't create if already exists or being created
+    if (rightMapRef.current || isCreatingMapRef.current) {
+      console.log('⏭️ Right map already exists or being created, skipping');
       return;
     }
 
+    isCreatingMapRef.current = true;
     console.log('🗺️ Creating second map for swipe comparison');
 
     // Get a deep copy of the style to avoid sharing references
@@ -89,13 +91,14 @@ export const DualMapSwipe = ({
     });
 
     rightMapRef.current = rightMap;
+    isCreatingMapRef.current = false;
 
     rightMap.on('load', () => {
       console.log('✅ Right map loaded');
 
       // Wait for style to fully load before modifying layers
       rightMap.once('idle', () => {
-        console.log('🎯 Right map idle, initial setup complete');
+        console.log('🎯 Right map idle, applying swipe layer removal');
         
         // Hide ALL vector layers on right map (they should only show on left/main map)
         const rightStyle = rightMap.getStyle();
@@ -110,6 +113,29 @@ export const DualMapSwipe = ({
               }
             }
           });
+        }
+        
+        // If no layerId, skip swipe target removal
+        if (!layerId) {
+          console.log('⚠️ No swipe layer selected');
+          return;
+        }
+        
+        // Remove the swipe target layer from right map to show what's beneath
+        if (rightMap.getLayer(layerId)) {
+          try {
+            rightMap.removeLayer(layerId);
+            console.log(`🗑️ Removed swipe target ${layerId} from right map`);
+          } catch (error) {
+            console.warn(`Could not remove layer ${layerId}:`, error);
+            // Fallback: hide it instead
+            try {
+              rightMap.setLayoutProperty(layerId, 'visibility', 'none');
+              console.log(`👁️ Hidden ${layerId} from right map (fallback)`);
+            } catch (e) {
+              console.warn(`Could not hide layer ${layerId}:`, e);
+            }
+          }
         }
       });
 
@@ -164,53 +190,7 @@ export const DualMapSwipe = ({
         rightMapRef.current = null;
       }
     };
-  }, [enabled, map, mapboxAccessToken]);
-
-  // Handle swipe target layer changes (without recreating the map)
-  useEffect(() => {
-    if (!enabled || !rightMapRef.current) return;
-    
-    const rightMap = rightMapRef.current;
-    if (!rightMap.loaded() || !rightMap.isStyleLoaded()) {
-      // Wait for map to be ready
-      rightMap.once('idle', () => {
-        handleSwipeTargetChange(rightMap, layerId);
-      });
-      return;
-    }
-    
-    handleSwipeTargetChange(rightMap, layerId);
-  }, [enabled, layerId]);
-
-  // Helper function to update swipe target on right map
-  const handleSwipeTargetChange = (rightMap: mapboxgl.Map, targetLayerId: string | null) => {
-    console.log(`🎯 Updating swipe target to: ${targetLayerId}`);
-    
-    // First, restore visibility of all health map layers (they might have been hidden before)
-    const rightStyle = rightMap.getStyle();
-    if (rightStyle && rightStyle.layers) {
-      rightStyle.layers.forEach((layer: any) => {
-        if (layer.id.startsWith('health-map-layer-')) {
-          try {
-            // Show all health map layers first
-            rightMap.setLayoutProperty(layer.id, 'visibility', 'visible');
-          } catch (e) {
-            // Layer might not exist
-          }
-        }
-      });
-    }
-    
-    // Now hide the current swipe target
-    if (targetLayerId && rightMap.getLayer(targetLayerId)) {
-      try {
-        rightMap.setLayoutProperty(targetLayerId, 'visibility', 'none');
-        console.log(`👁️ Hidden swipe target ${targetLayerId} on right map`);
-      } catch (e) {
-        console.warn(`Could not hide swipe target ${targetLayerId}:`, e);
-      }
-    }
-  };
+  }, [enabled, map, layerId, mapboxAccessToken]);
 
   // Synchronize layer changes from main map to right map
   useEffect(() => {
