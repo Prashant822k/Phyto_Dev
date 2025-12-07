@@ -12,6 +12,7 @@ import DateLayerDropdown from '@/components/DateLayerDropdown';
 import MapSwipeControl from '@/components/MapSwipeControl';
 import DualMapSwipe from '@/components/DualMapSwipe';
 import HealthMapStack from '@/components/HealthMapStack';
+import HealthMapDropdown from '@/components/HealthMapDropdown';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Database } from '@/lib/supabase';
 
@@ -597,34 +598,64 @@ const MapboxGolfCourseMap = ({
     });
   }, [visibleVectorLayers, vectorLayers, golfClubId, mapReady]);
 
+  // Auto-toggle off health maps when all are deselected
+  useEffect(() => {
+    if (showHealthMaps && selectedHealthMapIds.length === 0) {
+      console.log('🔄 All health maps deselected, turning off health maps');
+      setShowHealthMaps(false);
+    }
+  }, [selectedHealthMapIds, showHealthMaps]);
+
   // Determine which layer to swipe (topmost layer)
   useEffect(() => {
     if (!swipeEnabled) {
       setSwipeLayerId(null);
+      lastSwipeLayerRef.current = null;
       return;
     }
 
+    // Wait for map to be ready
+    if (!map.current || !map.current.loaded()) {
+      return;
+    }
+
+    let targetLayerId: string | null = null;
+
+    // Priority 1: Health maps (if enabled and selected)
     if (showHealthMaps && selectedHealthMapIds.length > 0) {
       const topHealthMapId = selectedHealthMapIds[selectedHealthMapIds.length - 1];
-      const topLayerId = `health-map-layer-${topHealthMapId}`;
-      if (map.current?.getLayer(topLayerId) && lastSwipeLayerRef.current !== topLayerId) {
-        lastSwipeLayerRef.current = topLayerId;
-        setSwipeLayerId(topLayerId);
-        console.log('🎚️ Swipe layer set to:', topLayerId);
+      const layerId = `health-map-layer-${topHealthMapId}`;
+      if (map.current.getLayer(layerId)) {
+        targetLayerId = layerId;
       }
-    } else if (rasterLayersLoaded && selectedLayers.length > 0) {
-      const layerId = `tileset-layer-${selectedLayers[0]}`;
-      if (lastSwipeLayerRef.current !== layerId) {
-        lastSwipeLayerRef.current = layerId;
-        setSwipeLayerId(layerId);
-        console.log('🎚️ Swipe layer set to:', layerId);
-      }
-    } else if (lastSwipeLayerRef.current !== null) {
-      lastSwipeLayerRef.current = null;
-      setSwipeLayerId(null);
-      console.log('🎚️ No layer available for swipe');
     }
-  }, [swipeEnabled, showHealthMaps, selectedHealthMapIds, rasterLayersLoaded, selectedLayers]);
+
+    // Priority 2: Visible vector layers (find first one that exists on map)
+    if (!targetLayerId && visibleVectorLayers.size > 0) {
+      for (const vectorLayerId of Array.from(visibleVectorLayers)) {
+        const layerId = `vector-layer-${vectorLayerId}`;
+        if (map.current.getLayer(layerId)) {
+          targetLayerId = layerId;
+          break;
+        }
+      }
+    }
+
+    // Priority 3: Raster layers
+    if (!targetLayerId && rasterLayersLoaded && selectedLayers.length > 0) {
+      const layerId = `tileset-layer-${selectedLayers[0]}`;
+      if (map.current.getLayer(layerId)) {
+        targetLayerId = layerId;
+      }
+    }
+
+    // Only update if changed
+    if (lastSwipeLayerRef.current !== targetLayerId) {
+      lastSwipeLayerRef.current = targetLayerId;
+      setSwipeLayerId(targetLayerId);
+      console.log('🎚️ Swipe layer set to:', targetLayerId || 'none');
+    }
+  }, [swipeEnabled, showHealthMaps, selectedHealthMapIds, rasterLayersLoaded, selectedLayers, visibleVectorLayers, mapReady]);
 
   // Manage vector layer visibility and z-index
   useEffect(() => {
@@ -761,16 +792,23 @@ const MapboxGolfCourseMap = ({
   };
 
   const animateSwipe = (direction: 'horizontal' | 'vertical', reverse: boolean = false) => {
-    if (isAnimating || !map.current || !map.current.getLayer('health-map-layer')) return;
+    // Check if we have any selected health maps
+    if (isAnimating || !map.current || selectedHealthMapIds.length === 0) return;
+    
+    // Check if at least one health map layer exists
+    const existingLayers = selectedHealthMapIds.filter(id => 
+      map.current?.getLayer(`health-map-layer-${id}`)
+    );
+    if (existingLayers.length === 0) return;
     
     if (animationRef.current) {
       cancelAnimationFrame(animationRef.current);
     }
     
     setIsAnimating(true);
-    const startOpacity = reverse ? 1 : 0;
+    const startOpacity = reverse ? healthMapOpacity : 0;
     const endOpacity = reverse ? 0 : 1;
-    const duration = 2000;
+    const duration = 1500;
     const startTime = performance.now();
     
     const animate = (currentTime: number) => {
@@ -784,8 +822,15 @@ const MapboxGolfCourseMap = ({
       const currentOpacity = startOpacity + (endOpacity - startOpacity) * easedProgress;
       
       setHealthMapOpacity(currentOpacity);
-      if (map.current && map.current.getLayer('health-map-layer')) {
-        map.current.setPaintProperty('health-map-layer', 'raster-opacity', currentOpacity);
+      
+      // Apply opacity to ALL selected health map layers
+      if (map.current) {
+        selectedHealthMapIds.forEach(id => {
+          const layerId = `health-map-layer-${id}`;
+          if (map.current!.getLayer(layerId)) {
+            map.current!.setPaintProperty(layerId, 'raster-opacity', currentOpacity);
+          }
+        });
       }
       
       if (progress < 1) {
@@ -908,79 +953,8 @@ const MapboxGolfCourseMap = ({
                 )}
               </div>
               
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-green-600" />
-                    <span className="text-sm font-medium">Health Maps</span>
-                    <Switch
-                      checked={showHealthMaps}
-                      onCheckedChange={setShowHealthMaps}
-                      disabled={healthMapTilesets.length === 0}
-                    />
-                  </div>
-                  {healthMapTilesets.length > 0 && showHealthMaps && (
-                    <>
-                      <HealthMapStack
-                        healthMaps={healthMapTilesets}
-                        selectedIds={selectedHealthMapIds}
-                        onSelectionChange={setSelectedHealthMapIds}
-                        showStack={true}
-                      />
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">Opacity:</span>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={healthMapOpacity * 100}
-                          onChange={(e) => {
-                            const opacity = parseInt(e.target.value) / 100
-                            setHealthMapOpacity(opacity)
-                            if (map.current) {
-                              selectedHealthMapIds.forEach(id => {
-                                const layerId = `health-map-layer-${id}`;
-                                if (map.current!.getLayer(layerId)) {
-                                  map.current!.setPaintProperty(layerId, 'raster-opacity', opacity)
-                                }
-                              });
-                            }
-                          }}
-                          className="w-24"
-                        />
-                        <span className="text-xs text-muted-foreground">{Math.round(healthMapOpacity * 100)}%</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleHorizontalSwipe}
-                          disabled={isAnimating}
-                          className="gap-1"
-                          title="Swipe in from left"
-                        >
-                          <ArrowRight className="w-3 h-3" />
-                          <span className="text-xs">Swipe →</span>
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleReverseHorizontalSwipe}
-                          disabled={isAnimating}
-                          className="gap-1"
-                          title="Swipe out to left"
-                        >
-                          <ArrowLeft className="w-3 h-3" />
-                          <span className="text-xs">← Swipe</span>
-                        </Button>
-                      </div>
-                    </>
-                  )}
-                  {healthMapTilesets.length === 0 && (
-                    <span className="text-xs text-muted-foreground">(No health maps available)</span>
-                  )}
-                </div>
-                
+              {/* Zoom controls - Health Maps now controlled via floating dropdown on map */}
+              <div className="flex items-center justify-end">
                 <div className="flex items-center gap-1">
                   <Button variant="outline" size="sm" onClick={zoomOut}>
                     <ZoomOut className="w-4 h-4" />
@@ -1076,6 +1050,32 @@ const MapboxGolfCourseMap = ({
               ref={setMapContainerRef} 
               className="absolute inset-0 w-full h-full rounded-lg overflow-hidden border"
             />
+            
+            {/* Floating Health Map Dropdown - Option A */}
+            {healthMapTilesets.length > 0 && (
+              <HealthMapDropdown
+                healthMaps={healthMapTilesets}
+                selectedIds={selectedHealthMapIds}
+                onSelectionChange={setSelectedHealthMapIds}
+                enabled={showHealthMaps}
+                onToggleEnabled={setShowHealthMaps}
+                opacity={healthMapOpacity}
+                onOpacityChange={(opacity) => {
+                  setHealthMapOpacity(opacity);
+                  if (map.current) {
+                    selectedHealthMapIds.forEach(id => {
+                      const layerId = `health-map-layer-${id}`;
+                      if (map.current!.getLayer(layerId)) {
+                        map.current!.setPaintProperty(layerId, 'raster-opacity', opacity);
+                      }
+                    });
+                  }
+                }}
+                onAnimateIn={handleHorizontalSwipe}
+                onAnimateOut={handleReverseHorizontalSwipe}
+                isAnimating={isAnimating}
+              />
+            )}
             
             <DualMapSwipe
               map={map.current}
