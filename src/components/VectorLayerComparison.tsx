@@ -71,6 +71,8 @@ const VectorLayerComparison = ({
   const [courseBounds, setCourseBounds] = useState<[[number, number], [number, number]] | null>(null);
   const [courseCenter, setCourseCenter] = useState<[number, number] | null>(null);
   const [containersReady, setContainersReady] = useState(false);
+  const [leftMapReady, setLeftMapReady] = useState(false);
+  const [rightMapReady, setRightMapReady] = useState(false);
 
   // Set Mapbox access token
   mapboxgl.accessToken = mapboxAccessToken;
@@ -282,6 +284,7 @@ const VectorLayerComparison = ({
         // Load PNG tiles immediately when map loads
         if (leftMap.current) {
           await loadPNGTilesOnMap(leftMap.current);
+          setLeftMapReady(true);
         }
       });
 
@@ -290,6 +293,7 @@ const VectorLayerComparison = ({
         // Load PNG tiles immediately when map loads
         if (rightMap.current) {
           await loadPNGTilesOnMap(rightMap.current);
+          setRightMapReady(true);
         }
       });
 
@@ -462,61 +466,79 @@ const VectorLayerComparison = ({
 
   // Load left layers
   useEffect(() => {
-    if (!leftMap.current || !leftMap.current.loaded()) {
+    if (!leftMap.current || !leftMapReady) {
       return;
     }
     
-    // Remove all existing layers
-    vectorLayers.forEach(layer => {
-      const sourceId = `vector-source-${layer.id}`;
-      const layerId = `vector-layer-${layer.id}`;
-      const outlineLayerId = `${layerId}-outline`;
+    const loadLayers = async () => {
+      // Remove layers that are no longer selected
+      vectorLayers.forEach(layer => {
+        if (!leftLayerIds.has(layer.id)) {
+          const sourceId = `vector-source-${layer.id}`;
+          const layerId = `vector-layer-${layer.id}`;
+          const outlineLayerId = `${layerId}-outline`;
+          
+          if (leftMap.current!.getLayer(outlineLayerId)) {
+            leftMap.current!.removeLayer(outlineLayerId);
+          }
+          if (leftMap.current!.getLayer(layerId)) {
+            leftMap.current!.removeLayer(layerId);
+          }
+          if (leftMap.current!.getSource(sourceId)) {
+            leftMap.current!.removeSource(sourceId);
+          }
+        }
+      });
       
-      if (leftMap.current!.getLayer(outlineLayerId)) {
-        leftMap.current!.removeLayer(outlineLayerId);
+      // Load selected layers (only those not already loaded)
+      for (const layerId of Array.from(leftLayerIds)) {
+        const mapLayerId = `vector-layer-${layerId}`;
+        if (!leftMap.current!.getLayer(mapLayerId)) {
+          await loadLayerOnMap(leftMap.current!, layerId);
+        }
       }
-      if (leftMap.current!.getLayer(layerId)) {
-        leftMap.current!.removeLayer(layerId);
-      }
-      if (leftMap.current!.getSource(sourceId)) {
-        leftMap.current!.removeSource(sourceId);
-      }
-    });
+    };
     
-    // Load selected layers
-    leftLayerIds.forEach(layerId => {
-      loadLayerOnMap(leftMap.current!, layerId);
-    });
-  }, [leftLayerIds, vectorLayers]);
+    loadLayers();
+  }, [leftLayerIds, vectorLayers, leftMapReady]);
 
   // Load right layers
   useEffect(() => {
-    if (!rightMap.current || !rightMap.current.loaded()) {
+    if (!rightMap.current || !rightMapReady) {
       return;
     }
     
-    // Remove all existing layers
-    vectorLayers.forEach(layer => {
-      const sourceId = `vector-source-${layer.id}`;
-      const layerId = `vector-layer-${layer.id}`;
-      const outlineLayerId = `${layerId}-outline`;
+    const loadLayers = async () => {
+      // Remove layers that are no longer selected
+      vectorLayers.forEach(layer => {
+        if (!rightLayerIds.has(layer.id)) {
+          const sourceId = `vector-source-${layer.id}`;
+          const layerId = `vector-layer-${layer.id}`;
+          const outlineLayerId = `${layerId}-outline`;
+          
+          if (rightMap.current!.getLayer(outlineLayerId)) {
+            rightMap.current!.removeLayer(outlineLayerId);
+          }
+          if (rightMap.current!.getLayer(layerId)) {
+            rightMap.current!.removeLayer(layerId);
+          }
+          if (rightMap.current!.getSource(sourceId)) {
+            rightMap.current!.removeSource(sourceId);
+          }
+        }
+      });
       
-      if (rightMap.current!.getLayer(outlineLayerId)) {
-        rightMap.current!.removeLayer(outlineLayerId);
+      // Load selected layers (only those not already loaded)
+      for (const layerId of Array.from(rightLayerIds)) {
+        const mapLayerId = `vector-layer-${layerId}`;
+        if (!rightMap.current!.getLayer(mapLayerId)) {
+          await loadLayerOnMap(rightMap.current!, layerId);
+        }
       }
-      if (rightMap.current!.getLayer(layerId)) {
-        rightMap.current!.removeLayer(layerId);
-      }
-      if (rightMap.current!.getSource(sourceId)) {
-        rightMap.current!.removeSource(sourceId);
-      }
-    });
+    };
     
-    // Load selected layers
-    rightLayerIds.forEach(layerId => {
-      loadLayerOnMap(rightMap.current!, layerId);
-    });
-  }, [rightLayerIds, vectorLayers]);
+    loadLayers();
+  }, [rightLayerIds, vectorLayers, rightMapReady]);
 
   // Get color for layer based on name
   const getLayerColor = (name: string): string => {

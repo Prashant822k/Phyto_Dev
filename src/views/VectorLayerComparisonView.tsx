@@ -83,7 +83,7 @@ export function VectorLayerComparisonView() {
             allLayers={layers}
             activeLayers={activeLayers}
             onLayerToggle={toggleLayer}
-            mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || ''}
+            mapboxAccessToken={import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || ''}
           />
         ) : (
           <div className="flex items-center justify-center h-full">

@@ -598,9 +598,26 @@ const MapboxGolfCourseMap = ({
     });
   }, [visibleVectorLayers, vectorLayers, golfClubId, mapReady]);
 
-  // Auto-toggle off health maps when all are deselected
+  // Track if user has ever selected a health map (to avoid auto-off on initial toggle)
+  const hasEverSelectedHealthMap = useRef(false);
+  
+  // Track when health maps are selected
   useEffect(() => {
-    if (showHealthMaps && selectedHealthMapIds.length === 0) {
+    if (selectedHealthMapIds.length > 0) {
+      hasEverSelectedHealthMap.current = true;
+    }
+  }, [selectedHealthMapIds]);
+  
+  // Reset the flag when toggle is manually turned OFF
+  useEffect(() => {
+    if (!showHealthMaps) {
+      hasEverSelectedHealthMap.current = false;
+    }
+  }, [showHealthMaps]);
+  
+  // Auto-toggle off health maps when all are deselected (only if user had previously selected some)
+  useEffect(() => {
+    if (showHealthMaps && selectedHealthMapIds.length === 0 && hasEverSelectedHealthMap.current) {
       console.log('🔄 All health maps deselected, turning off health maps');
       setShowHealthMaps(false);
     }
@@ -1058,7 +1075,13 @@ const MapboxGolfCourseMap = ({
                 selectedIds={selectedHealthMapIds}
                 onSelectionChange={setSelectedHealthMapIds}
                 enabled={showHealthMaps}
-                onToggleEnabled={setShowHealthMaps}
+                onToggleEnabled={(enabled) => {
+                  setShowHealthMaps(enabled);
+                  // When toggling OFF, clear all selected health maps
+                  if (!enabled) {
+                    setSelectedHealthMapIds([]);
+                  }
+                }}
                 opacity={healthMapOpacity}
                 onOpacityChange={(opacity) => {
                   setHealthMapOpacity(opacity);

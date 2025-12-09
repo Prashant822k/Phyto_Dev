@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import HeroSection from "@/components/HeroSection";
-import LoginModal from "@/components/LoginModal";
+import RegisterModal from "@/components/RegisterModal";
 import Dashboard from "./Dashboard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,7 @@ import { Shield, Users, MapPin, ArrowRight } from "lucide-react";
 
 const Index = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [showLogin, setShowLogin] = useState(false);
+  const [showRegister, setShowRegister] = useState(false);
 
   const handleLogin = () => {
     setIsLoggedIn(true);
@@ -27,12 +27,12 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <Navigation 
-        onLoginClick={() => setShowLogin(true)} 
         isLoggedIn={isLoggedIn}
         onLogout={handleLogout}
+        onRegisterClick={() => setShowRegister(true)}
       />
       
-      <HeroSection onGetStarted={() => setShowLogin(true)} />
+      <HeroSection onGetStarted={() => window.location.href = '/login-client'} />
       
       {/* Login Options Section */}
       <section className="py-16 bg-gray-50">
@@ -129,10 +129,9 @@ const Index = () => {
         </div>
       </section>
       
-      <LoginModal 
-        isOpen={showLogin}
-        onClose={() => setShowLogin(false)}
-        onLogin={handleLogin}
+      <RegisterModal 
+        isOpen={showRegister}
+        onClose={() => setShowRegister(false)}
       />
     </div>
   );

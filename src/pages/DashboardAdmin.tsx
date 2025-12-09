@@ -22,8 +22,7 @@ const DashboardAdmin = () => {
   const [clubs, setClubs] = useState<Array<{id: string, name: string}>>([])
   const [users, setUsers] = useState<Array<{id: string, email: string, full_name: string, role: string, club_id: string | null, created_at: string}>>([])
   const [newClubName, setNewClubName] = useState('')
-  const [selectedUser, setSelectedUser] = useState('')
-  const [selectedClub, setSelectedClub] = useState('')
+  // Note: selectedUser and selectedClub are no longer needed - ClientCourseManager handles assignments
   
   // Admin account creation state
   const [newAdminEmail, setNewAdminEmail] = useState('')
@@ -117,16 +116,9 @@ const DashboardAdmin = () => {
     }
   }
   
-  const assignUserToClub = async () => {
-    if (!selectedUser || !selectedClub) return
-    const { error } = await supabase.from('users').update({ club_id: selectedClub }).eq('id', selectedUser)
-    if (error) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' })
-    } else {
-      loadUsers()
-      toast({ title: 'User assigned to club' })
-    }
-  }
+  // NOTE: Client-to-course assignment is now handled by ClientCourseManager
+  // which uses the client_golf_courses junction table for multi-course support.
+  // The old users.club_id column is kept in sync by the assign_client_to_course SQL function.
 
   const createAdminAccount = async () => {
     if (!newAdminEmail || !newAdminPassword || !newAdminName) {

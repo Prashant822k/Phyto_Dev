@@ -1,13 +1,15 @@
-import { Leaf, User } from "lucide-react";
+import { Leaf, User, UserPlus, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
 
 interface NavigationProps {
   onLoginClick?: () => void;
   isLoggedIn?: boolean;
   onLogout?: () => void;
+  onRegisterClick?: () => void;
 }
 
-const Navigation = ({ onLoginClick, isLoggedIn, onLogout }: NavigationProps) => {
+const Navigation = ({ onLoginClick, isLoggedIn, onLogout, onRegisterClick }: NavigationProps) => {
   return (
     <header className="bg-background border-b border-border shadow-sm">
       <div className="container mx-auto px-6 py-4">
@@ -30,7 +32,7 @@ const Navigation = ({ onLoginClick, isLoggedIn, onLogout }: NavigationProps) => 
             <a href="#" className="text-foreground hover:text-primary transition-colors">Blog</a>
           </nav>
 
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
             {isLoggedIn ? (
               <div className="flex items-center space-x-2">
                 <User className="w-5 h-5 text-muted-foreground" />
@@ -40,9 +42,18 @@ const Navigation = ({ onLoginClick, isLoggedIn, onLogout }: NavigationProps) => 
                 </Button>
               </div>
             ) : (
-              <Button onClick={onLoginClick} variant="default">
-                Login
-              </Button>
+              <>
+                <Button variant="outline" onClick={onRegisterClick} className="hidden sm:flex">
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Register
+                </Button>
+                <Link to="/login-client">
+                  <Button variant="default">
+                    <LogIn className="w-4 h-4 mr-2" />
+                    Login
+                  </Button>
+                </Link>
+              </>
             )}
           </div>
         </div>

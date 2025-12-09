@@ -34,13 +34,37 @@ export class ClientCourseService {
    */
   static async getClientCourses(clientId: string): Promise<ClientCourse[]> {
     try {
+      // Try RPC function first
       const { data, error } = await supabase.rpc('get_client_golf_courses', {
         user_id: clientId,
       })
 
       if (error) {
-        console.error('Error fetching client courses:', error)
-        return []
+        console.error('RPC error, falling back to direct query:', error)
+        // Fallback: Direct query to client_golf_courses table
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('client_golf_courses')
+          .select(`
+            golf_club_id,
+            assigned_at,
+            is_active,
+            golf_clubs:golf_club_id (name)
+          `)
+          .eq('client_id', clientId)
+          .eq('is_active', true)
+        
+        if (fallbackError) {
+          console.error('Fallback query also failed:', fallbackError)
+          return []
+        }
+        
+        // Transform to expected format
+        return (fallbackData || []).map((item: any) => ({
+          golf_club_id: item.golf_club_id,
+          golf_club_name: item.golf_clubs?.name || 'Unknown Course',
+          assigned_at: item.assigned_at,
+          is_active: item.is_active,
+        }))
       }
 
       return data || []
