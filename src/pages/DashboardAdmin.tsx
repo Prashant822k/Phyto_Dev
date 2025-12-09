@@ -242,21 +242,44 @@ const DashboardAdmin = () => {
 
   const deleteUser = async (userId: string, userEmail: string) => {
     try {
-      // Note: supabase.auth.admin.deleteUser requires service role key
-      // For now, we'll just delete from public.users and show instructions
-      const { error } = await supabase
-        .from('users')
-        .delete()
-        .eq('id', userId)
-      
-      if (error) throw error
-      
-      toast({ 
-        title: 'User profile deleted', 
-        description: 'User profile removed. You may need to delete the auth user manually in Supabase Dashboard if needed.',
-        variant: 'default'
+      // Call edge function to delete user and all related data
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        throw new Error('No active session')
+      }
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      const response = await fetch(`${supabaseUrl}/functions/v1/delete-user`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId }),
       })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to delete user')
+      }
+
+      if (result.warning) {
+        toast({ 
+          title: 'User partially deleted', 
+          description: result.warning,
+          variant: 'default'
+        })
+      } else {
+        toast({ 
+          title: 'User deleted successfully', 
+          description: `${userEmail} and all related data have been removed.`,
+          variant: 'default'
+        })
+      }
+      
       loadUsers()
+      loadClubs() // Refresh clubs to update assigned client counts
     } catch (error) {
       toast({ 
         title: 'Error deleting user', 

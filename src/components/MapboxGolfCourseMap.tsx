@@ -970,7 +970,7 @@ const MapboxGolfCourseMap = ({
                 )}
               </div>
               
-              {/* Zoom controls - Health Maps now controlled via floating dropdown on map */}
+              {/* Zoom controls */}
               <div className="flex items-center justify-end">
                 <div className="flex items-center gap-1">
                   <Button variant="outline" size="sm" onClick={zoomOut}>
@@ -1068,7 +1068,7 @@ const MapboxGolfCourseMap = ({
             className="absolute inset-0 w-full h-full rounded-lg overflow-hidden border"
           />
           
-          {/* Health Maps Dropdown - Floating on map */}
+          {/* Health Maps Dropdown - Floating top-left on map */}
           {healthMapTilesets.length > 0 && (
             <HealthMapDropdown
               healthMaps={healthMapTilesets}
@@ -1077,7 +1077,6 @@ const MapboxGolfCourseMap = ({
               enabled={showHealthMaps}
               onToggleEnabled={(enabled) => {
                 setShowHealthMaps(enabled);
-                // When toggling OFF, clear all selected health maps
                 if (!enabled) {
                   setSelectedHealthMapIds([]);
                 }
@@ -1099,6 +1098,7 @@ const MapboxGolfCourseMap = ({
               isAnimating={isAnimating}
             />
           )}
+          
           <DualMapSwipe
             map={map.current}
             layerId={swipeLayerId}
@@ -1112,7 +1112,7 @@ const MapboxGolfCourseMap = ({
       </CardContent>
     </Card>
 
-    {/* Raster Images Section */}
+    {/* Raster Layer Selection - Below map card */}
     <DateLayerDropdown
       tilesets={tilesets}
       selectedLayers={selectedLayers}

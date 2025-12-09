@@ -127,28 +127,46 @@ export function EnhancedUserList({ users, clubs, onUserUpdate }: EnhancedUserLis
     console.log('🔄 Starting delete process...')
     
     try {
-      console.log('📡 Calling Supabase delete API...')
-      
-      // Delete the user record from public.users
-      const { data: deleteData, error: deleteError } = await supabase
-        .from('users')
-        .delete()
-        .eq('id', userId)
-        .select() // Return deleted rows to confirm deletion
-
-      console.log('📥 Delete response:', { data: deleteData, error: deleteError })
-
-      if (deleteError) {
-        console.error('❌ Delete error:', deleteError)
-        throw deleteError
+      // Get session for auth header
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        throw new Error('No active session')
       }
 
-      console.log('✅ User deleted successfully from database')
-
-      toast({
-        title: 'User Deleted',
-        description: `${email} has been permanently removed`,
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      console.log('📡 Calling delete-user edge function...')
+      
+      const response = await fetch(`${supabaseUrl}/functions/v1/delete-user`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId }),
       })
+
+      console.log('📥 Edge function response status:', response.status)
+      const result = await response.json()
+      console.log('📥 Edge function result:', result)
+
+      if (!response.ok) {
+        console.error('❌ Edge function error:', result.error)
+        throw new Error(result.error || 'Failed to delete user')
+      }
+
+      if (result.warning) {
+        console.warn('⚠️ Partial deletion:', result.warning)
+        toast({
+          title: 'User Partially Deleted',
+          description: result.warning,
+        })
+      } else {
+        console.log('✅ User deleted successfully')
+        toast({
+          title: 'User Deleted',
+          description: `${email} and all related data have been permanently removed`,
+        })
+      }
 
       // Reset confirmation state
       console.log('🔄 Resetting confirmation state...')

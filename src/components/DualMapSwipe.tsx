@@ -421,15 +421,15 @@ export const DualMapSwipe = ({
         }}
       />
 
-      {/* Date Labels */}
+      {/* Date Labels - Bottom corners */}
       {leftLayerMeta && (
-        <div className="absolute top-4 left-4 bg-black/75 text-white px-4 py-2 rounded-lg shadow-xl text-sm pointer-events-none" style={{ zIndex: 9 }}>
+        <div className="absolute bottom-4 left-4 bg-black/75 text-white px-4 py-2 rounded-lg shadow-xl text-sm pointer-events-none" style={{ zIndex: 9 }}>
           <div className="font-semibold">{leftLayerMeta.name}</div>
           <div className="text-xs opacity-90">{leftLayerMeta.date}</div>
         </div>
       )}
       {rightLayerMeta && (
-        <div className="absolute top-4 right-4 bg-black/75 text-white px-4 py-2 rounded-lg shadow-xl text-sm pointer-events-none" style={{ zIndex: 9 }}>
+        <div className="absolute bottom-4 right-4 bg-black/75 text-white px-4 py-2 rounded-lg shadow-xl text-sm pointer-events-none" style={{ zIndex: 9 }}>
           <div className="font-semibold">{rightLayerMeta.name}</div>
           <div className="text-xs opacity-90">{rightLayerMeta.date}</div>
         </div>
