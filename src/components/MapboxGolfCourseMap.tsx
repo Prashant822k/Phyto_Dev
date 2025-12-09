@@ -1061,86 +1061,86 @@ const MapboxGolfCourseMap = ({
           )}
         </CardHeader>
 
-        <CardContent>
-          <div className="relative w-full h-[600px]">
-            <div 
-              ref={setMapContainerRef} 
-              className="absolute inset-0 w-full h-full rounded-lg overflow-hidden border"
-            />
-            
-            {/* Floating Health Map Dropdown - Option A */}
-            {healthMapTilesets.length > 0 && (
-              <HealthMapDropdown
-                healthMaps={healthMapTilesets}
-                selectedIds={selectedHealthMapIds}
-                onSelectionChange={setSelectedHealthMapIds}
-                enabled={showHealthMaps}
-                onToggleEnabled={(enabled) => {
-                  setShowHealthMaps(enabled);
-                  // When toggling OFF, clear all selected health maps
-                  if (!enabled) {
-                    setSelectedHealthMapIds([]);
-                  }
-                }}
-                opacity={healthMapOpacity}
-                onOpacityChange={(opacity) => {
-                  setHealthMapOpacity(opacity);
-                  if (map.current) {
-                    selectedHealthMapIds.forEach(id => {
-                      const layerId = `health-map-layer-${id}`;
-                      if (map.current!.getLayer(layerId)) {
-                        map.current!.setPaintProperty(layerId, 'raster-opacity', opacity);
-                      }
-                    });
-                  }
-                }}
-                onAnimateIn={handleHorizontalSwipe}
-                onAnimateOut={handleReverseHorizontalSwipe}
-                isAnimating={isAnimating}
-              />
-            )}
-            
-            <DualMapSwipe
-              map={map.current}
-              layerId={swipeLayerId}
-              enabled={swipeEnabled}
-              onToggle={() => setSwipeEnabled(!swipeEnabled)}
-              mapboxAccessToken={mapboxAccessToken}
-              leftLayerMeta={getLayerMetadata(swipeLayerId)}
-              rightLayerMeta={getLayerMetadata(getLayerBeneath(swipeLayerId))}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <DateLayerDropdown
-        tilesets={tilesets}
-        selectedLayers={selectedLayers}
-        onLayerChange={handleLayerChange}
-      />
-
-      {map.current && map.current.loaded() && (
-        <>
-          {canSwipe && swipeMode && (
-            <MapSwipeControl
-              map={map.current}
-              leftLayerId={`tileset-layer-${selectedLayers[0]}`}
-              rightLayerId={`tileset-layer-${selectedLayers[1]}`}
-              isActive={swipeMode}
-              onToggle={() => setSwipeMode(!swipeMode)}
+      <CardContent>
+        <div className="relative w-full h-[600px]">
+          <div 
+            ref={setMapContainerRef} 
+            className="absolute inset-0 w-full h-full rounded-lg overflow-hidden border"
+          />
+          
+          {/* Health Maps Dropdown - Floating on map */}
+          {healthMapTilesets.length > 0 && (
+            <HealthMapDropdown
+              healthMaps={healthMapTilesets}
+              selectedIds={selectedHealthMapIds}
+              onSelectionChange={setSelectedHealthMapIds}
+              enabled={showHealthMaps}
+              onToggleEnabled={(enabled) => {
+                setShowHealthMaps(enabled);
+                // When toggling OFF, clear all selected health maps
+                if (!enabled) {
+                  setSelectedHealthMapIds([]);
+                }
+              }}
+              opacity={healthMapOpacity}
+              onOpacityChange={(opacity) => {
+                setHealthMapOpacity(opacity);
+                if (map.current) {
+                  selectedHealthMapIds.forEach(id => {
+                    const layerId = `health-map-layer-${id}`;
+                    if (map.current!.getLayer(layerId)) {
+                      map.current!.setPaintProperty(layerId, 'raster-opacity', opacity);
+                    }
+                  });
+                }
+              }}
+              onAnimateIn={handleHorizontalSwipe}
+              onAnimateOut={handleReverseHorizontalSwipe}
+              isAnimating={isAnimating}
             />
           )}
-          {showHealthMaps && selectedHealthMapIds.length > 0 && map.current.getLayer(`health-map-layer-${selectedHealthMapIds[selectedHealthMapIds.length - 1]}`) && (
-            <MapSwipeControl
-              map={map.current}
-              leftLayerId={`tileset-layer-${selectedLayers[0]}`}
-              rightLayerId={`health-map-layer-${selectedHealthMapIds[selectedHealthMapIds.length - 1]}`}
-              isActive={true}
-              onToggle={() => setShowHealthMaps(false)}
-            />
-          )}
-        </>
-      )}
+          <DualMapSwipe
+            map={map.current}
+            layerId={swipeLayerId}
+            enabled={swipeEnabled}
+            onToggle={() => setSwipeEnabled(!swipeEnabled)}
+            mapboxAccessToken={mapboxAccessToken}
+            leftLayerMeta={getLayerMetadata(swipeLayerId)}
+            rightLayerMeta={getLayerMetadata(getLayerBeneath(swipeLayerId))}
+          />
+        </div>
+      </CardContent>
+    </Card>
+
+    {/* Raster Images Section */}
+    <DateLayerDropdown
+      tilesets={tilesets}
+      selectedLayers={selectedLayers}
+      onLayerChange={handleLayerChange}
+    />
+
+    {map.current && map.current.loaded() && (
+      <>
+        {canSwipe && swipeMode && (
+          <MapSwipeControl
+            map={map.current}
+            leftLayerId={`tileset-layer-${selectedLayers[0]}`}
+            rightLayerId={`tileset-layer-${selectedLayers[1]}`}
+            isActive={swipeMode}
+            onToggle={() => setSwipeMode(!swipeMode)}
+          />
+        )}
+        {showHealthMaps && selectedHealthMapIds.length > 0 && map.current.getLayer(`health-map-layer-${selectedHealthMapIds[selectedHealthMapIds.length - 1]}`) && (
+          <MapSwipeControl
+            map={map.current}
+            leftLayerId={`tileset-layer-${selectedLayers[0]}`}
+            rightLayerId={`health-map-layer-${selectedHealthMapIds[selectedHealthMapIds.length - 1]}`}
+            isActive={true}
+            onToggle={() => setShowHealthMaps(false)}
+          />
+        )}
+      </>
+    )}
       
       {vectorLayers.length > 0 && (
         <>

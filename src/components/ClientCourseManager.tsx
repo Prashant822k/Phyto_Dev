@@ -13,7 +13,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Users, MapPin, Plus, Trash2, CheckCircle2, XCircle } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Users, MapPin, Plus, Trash2, CheckCircle2, XCircle, Search } from 'lucide-react'
 import {
   Table,
   TableBody,
@@ -58,7 +59,19 @@ export function ClientCourseManager() {
   const [selectedClient, setSelectedClient] = useState<string>('')
   const [selectedCourses, setSelectedCourses] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
+  const [searchQuery, setSearchQuery] = useState<string>('')
   const { toast } = useToast()
+
+  // Filter clients based on search query
+  const filteredClients = clients.filter((client) => {
+    if (!searchQuery) return true
+    const query = searchQuery.toLowerCase()
+    return (
+      client.email.toLowerCase().includes(query) ||
+      client.full_name?.toLowerCase().includes(query) ||
+      client.id.toLowerCase().includes(query)
+    )
+  })
 
   useEffect(() => {
     loadData()
@@ -220,6 +233,26 @@ export function ClientCourseManager() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Search Input */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium flex items-center gap-2">
+              <Search className="h-4 w-4 text-gray-500" />
+              Search Clients
+            </label>
+            <Input
+              type="text"
+              placeholder="Search by name, email, or ID..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full"
+            />
+            {searchQuery && (
+              <p className="text-xs text-gray-500">
+                Found {filteredClients.length} client{filteredClients.length !== 1 ? 's' : ''}
+              </p>
+            )}
+          </div>
+
           {/* Client Selection */}
           <div className="space-y-2">
             <label className="text-sm font-medium">Select Client</label>
@@ -228,11 +261,17 @@ export function ClientCourseManager() {
                 <SelectValue placeholder="Choose a client..." />
               </SelectTrigger>
               <SelectContent>
-                {clients.map((client) => (
-                  <SelectItem key={client.id} value={client.id}>
-                    {client.full_name || client.email} ({client.email})
-                  </SelectItem>
-                ))}
+                {filteredClients.length === 0 ? (
+                  <div className="p-2 text-sm text-gray-500 text-center">
+                    No clients found
+                  </div>
+                ) : (
+                  filteredClients.map((client) => (
+                    <SelectItem key={client.id} value={client.id}>
+                      {client.full_name || client.email} ({client.email})
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
           </div>

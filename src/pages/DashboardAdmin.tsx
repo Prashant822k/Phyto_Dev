@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { Badge } from '@/components/ui/badge'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
-import { Trash2, UserPlus, Shield, Users, Upload, FileText, Settings, Map, MapPin, Activity } from 'lucide-react'
+import { Trash2, UserPlus, Shield, Users, Upload, FileText, Settings, Map, MapPin, Activity, LogOut } from 'lucide-react'
 import { ClientCourseManager } from '@/components/ClientCourseManager'
 import { EnhancedUserList } from '@/components/EnhancedUserList'
 import HealthMapUploader from '@/components/HealthMapUploader'
@@ -22,6 +22,7 @@ const DashboardAdmin = () => {
   const [clubs, setClubs] = useState<Array<{id: string, name: string}>>([])
   const [users, setUsers] = useState<Array<{id: string, email: string, full_name: string, role: string, club_id: string | null, created_at: string}>>([])
   const [newClubName, setNewClubName] = useState('')
+  const [clubAssignments, setClubAssignments] = useState<Record<string, Array<{id: string, email: string, full_name: string | null}>>>({})
   // Note: selectedUser and selectedClub are no longer needed - ClientCourseManager handles assignments
   
   // Admin account creation state
@@ -58,6 +59,26 @@ const DashboardAdmin = () => {
       
       console.log('Clubs loaded:', data)
       setClubs(data || [])
+
+      // Load assignments for each club
+      const assignmentsMap: Record<string, Array<{id: string, email: string, full_name: string | null}>> = {}
+      for (const club of data || []) {
+        const { data: assignments } = await supabase
+          .from('client_golf_courses')
+          .select(`
+            client_id,
+            users:client_id (
+              id,
+              email,
+              full_name
+            )
+          `)
+          .eq('golf_club_id', club.id)
+          .eq('is_active', true)
+        
+        assignmentsMap[club.id] = (assignments || []).map((a: any) => a.users).filter(Boolean)
+      }
+      setClubAssignments(assignmentsMap)
     } catch (error) {
       console.error('Unexpected error loading clubs:', error)
       toast({ 
@@ -245,42 +266,59 @@ const DashboardAdmin = () => {
     }
   }
 
-  return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-          <p className="text-gray-600 mt-1">Manage your PhytoMaps system</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Shield className="h-6 w-6 text-blue-600" />
-          <Badge variant="secondary" className="text-sm">Administrator</Badge>
-        </div>
-      </div>
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    window.location.href = '/'
+  }
 
-      <Tabs defaultValue="tiles" className="w-full">
-        <TabsList className="grid w-full grid-cols-6">
-          <TabsTrigger value="tiles" className="flex items-center gap-2">
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-green-50 via-blue-50 to-emerald-50">
+      <div className="container mx-auto py-6 space-y-6">
+        {/* Header with Logout */}
+        <div className="flex items-center justify-between bg-white rounded-lg shadow-sm p-6 border border-green-100">
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-green-700 to-blue-700 bg-clip-text text-transparent">Admin Dashboard</h1>
+            <p className="text-gray-600 mt-1">Manage your PhytoMaps golf course system</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-lg border border-blue-200">
+              <Shield className="h-5 w-5 text-blue-600" />
+              <Badge variant="secondary" className="text-sm font-medium">Administrator</Badge>
+            </div>
+            <Button 
+              variant="outline" 
+              onClick={handleLogout}
+              className="flex items-center gap-2 hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors"
+            >
+              <LogOut className="h-4 w-4" />
+              Logout
+            </Button>
+          </div>
+        </div>
+
+      <Tabs defaultValue="tiles" className="w-full bg-white rounded-lg shadow-sm border border-green-100 p-4">
+        <TabsList className="grid w-full grid-cols-6 bg-gradient-to-r from-green-50 to-blue-50 p-1">
+          <TabsTrigger value="tiles" className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <Map className="h-4 w-4" />
             Upload Tiles
           </TabsTrigger>
-          <TabsTrigger value="upload" className="flex items-center gap-2">
+          <TabsTrigger value="upload" className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <Upload className="h-4 w-4" />
-            Upload Files
+            Upload Vector Layers
           </TabsTrigger>
-          <TabsTrigger value="files" className="flex items-center gap-2">
+          <TabsTrigger value="files" className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <Activity className="h-4 w-4" />
             Upload Health Maps
           </TabsTrigger>
-          <TabsTrigger value="clubs" className="flex items-center gap-2">
+          <TabsTrigger value="clubs" className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <Users className="h-4 w-4" />
             Manage Clubs
           </TabsTrigger>
-          <TabsTrigger value="users" className="flex items-center gap-2">
+          <TabsTrigger value="users" className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <Users className="h-4 w-4" />
             Manage Users
           </TabsTrigger>
-          <TabsTrigger value="admin" className="flex items-center gap-2">
+          <TabsTrigger value="admin" className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <Settings className="h-4 w-4" />
             Admin Settings
           </TabsTrigger>
@@ -316,12 +354,40 @@ const DashboardAdmin = () => {
                 <Input placeholder="Club name" value={newClubName} onChange={(e) => setNewClubName(e.target.value)} />
                 <Button onClick={createClub}>Create Club</Button>
               </div>
-              <div className="space-y-2">
-                {clubs.map((club) => (
-                  <div key={club.id} className="flex items-center justify-between p-2 border rounded">
-                    <span>{club.name}</span>
-                  </div>
-                ))}
+              <div className="space-y-3">
+                {clubs.map((club) => {
+                  const assignedClients = clubAssignments[club.id] || []
+                  return (
+                    <div key={club.id} className="p-4 border rounded-lg bg-white shadow-sm hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <MapPin className="h-5 w-5 text-green-600" />
+                            <span className="font-semibold text-lg">{club.name}</span>
+                          </div>
+                          <div className="ml-7">
+                            <p className="text-sm text-gray-600 mb-2">
+                              <Users className="h-4 w-4 inline mr-1" />
+                              Assigned Clients: {assignedClients.length}
+                            </p>
+                            {assignedClients.length > 0 && (
+                              <div className="flex flex-wrap gap-2">
+                                {assignedClients.map((client) => (
+                                  <Badge key={client.id} variant="secondary" className="text-xs">
+                                    {client.full_name || client.email}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                            {assignedClients.length === 0 && (
+                              <p className="text-xs text-gray-400 italic">No clients assigned yet</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </CardContent>
           </Card>
@@ -446,7 +512,7 @@ const DashboardAdmin = () => {
                     <li>Create your first admin account using the form above</li>
                     <li>Create golf clubs in the "Manage Clubs" tab</li>
                     <li>Assign users to clubs in the "Manage Users" tab</li>
-                    <li>Upload agricultural data in the "Upload Files" tab</li>
+                    <li>Upload agricultural data in the "Upload Vector Layers" tab</li>
                     <li>Monitor system activity in the "Manage Files" tab</li>
                   </ol>
                 </div>
@@ -481,6 +547,7 @@ const DashboardAdmin = () => {
           </div>
         </TabsContent>
       </Tabs>
+      </div>
     </div>
   )
 }
