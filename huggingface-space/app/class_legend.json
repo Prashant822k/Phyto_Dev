@@ -1,0 +1,57 @@
+{
+  "classes": [
+    {
+      "class_id": 0,
+      "class_name": "background",
+      "color": "#000000",
+      "description": "Background / No data"
+    },
+    {
+      "class_id": 1,
+      "class_name": "fairway",
+      "color": "#90EE90",
+      "description": "Fairway grass"
+    },
+    {
+      "class_id": 2,
+      "class_name": "rough",
+      "color": "#228B22",
+      "description": "Rough grass areas"
+    },
+    {
+      "class_id": 3,
+      "class_name": "green",
+      "color": "#32CD32",
+      "description": "Putting greens"
+    },
+    {
+      "class_id": 4,
+      "class_name": "water",
+      "color": "#4169E1",
+      "description": "Water hazards / ponds"
+    },
+    {
+      "class_id": 5,
+      "class_name": "bunker",
+      "color": "#F4A460",
+      "description": "Sand bunkers"
+    },
+    {
+      "class_id": 6,
+      "class_name": "tree",
+      "color": "#006400",
+      "description": "Trees and vegetation"
+    },
+    {
+      "class_id": 7,
+      "class_name": "path",
+      "color": "#8B4513",
+      "description": "Cart paths and walkways"
+    }
+  ],
+  "num_classes": 8,
+  "model_input_shape": [512, 512, 3],
+  "model_output_shape": [512, 512, 8],
+  "normalization": "divide_255",
+  "channel_order": "RGB"
+}
