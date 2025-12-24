@@ -123,4 +123,4 @@ DEFAULT_SIMPLIFY_TOLERANCE = 1.0
 
 ## 📝 License
 
-Proprietary - Phyto Golf
+Proprietary - PhytoMaps
