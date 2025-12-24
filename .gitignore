@@ -5,10 +5,12 @@ node_modules/
 
 # Testing
 coverage/
+*.test.js.snap
 
 # Production
 dist/
 build/
+*.tsbuildinfo
 
 # Environment files (CRITICAL!)
 .env
@@ -16,16 +18,20 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
+
 *.env
 supabase/functions/.env
 backend/.env
 frontend/.env
+scripts/.env
 
 # Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
+pnpm-debug.log*
+.pnpm-debug.log*
 
 # Editor
 .vscode/*
@@ -34,11 +40,32 @@ lerna-debug.log*
 *.swp
 *.swo
 *~
+.vscode-test
 
 # OS
 .DS_Store
 Thumbs.db
+Desktop.ini
+
+# Build artifacts
+*.log
+.cache/
+.temp/
+.tmp/
+*.pid
+*.seed
+*.pid.lock
+
+# Cloudflare
+.wrangler/
+wrangler.toml.local
+
+# Supabase
+.supabase/
+
+# TypeScript
+*.tsbuildinfo
 
 # Misc
 *.local
-.cache/
+.bun/
