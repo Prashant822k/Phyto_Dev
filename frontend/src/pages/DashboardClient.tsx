@@ -6,9 +6,11 @@ import { ClientCourseService } from '@/lib/clientCourseService'
 import { ImageService } from '@/lib/imageService'
 import MapboxGolfCourseMap from '@/components/MapboxGolfCourseMap'
 import VectorLayerComparison from '@/components/VectorLayerComparison'
+import ModelPredictionOverlay from '@/components/ModelPredictionOverlay'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { MapPin, RefreshCw, Image as ImageIcon } from 'lucide-react'
+import { MapPin, RefreshCw, Image as ImageIcon, Brain } from 'lucide-react'
+import mapboxgl from 'mapbox-gl'
 
 const DashboardClient = () => {
   const [images, setImages] = useState<Array<any>>([])
@@ -16,6 +18,7 @@ const DashboardClient = () => {
   const [golfClubName, setGolfClubName] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [hasMultipleCourses, setHasMultipleCourses] = useState(false)
+  const [mapInstance, setMapInstance] = useState<mapboxgl.Map | null>(null)
   const navigate = useNavigate()
 
   const load = async () => {
@@ -104,6 +107,10 @@ const DashboardClient = () => {
               mapboxAccessToken={mapboxToken}
               showControls={true}
               className="w-full"
+              onMapReady={(map) => {
+                console.log('[DashboardClient] Map ready, setting instance');
+                setMapInstance(map);
+              }}
             />
           </div>
 
@@ -139,32 +146,43 @@ const DashboardClient = () => {
         </Card>
       )}
 
-      {/* Processed Images Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ImageIcon className="w-5 h-5" />
-            Processed Imagery
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="text-center py-8 text-muted-foreground">
-              Loading images...
-            </div>
-          ) : images.length > 0 ? (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {images.map((img) => (
-                <ClientImageTile key={img.id} image={img} />
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              No processed images yet.
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* AI Predictions & Processed Imagery Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* AI Model Predictions */}
+        {golfClubId && (
+          <ModelPredictionOverlay
+            golfClubId={golfClubId}
+            map={mapInstance}
+          />
+        )}
+
+        {/* Processed Images */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ImageIcon className="w-5 h-5" />
+              Processed Imagery
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="text-center py-8 text-muted-foreground">
+                Loading images...
+              </div>
+            ) : images.length > 0 ? (
+              <div className="grid grid-cols-2 gap-4">
+                {images.map((img) => (
+                  <ClientImageTile key={img.id} image={img} />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                No processed images yet.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

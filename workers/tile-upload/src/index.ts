@@ -163,6 +163,93 @@ export default {
         return Response.json({ success: true, key }, { headers: CORS });
       }
 
+      // ============================================================
+      // MODEL PREDICTION STORAGE ENDPOINTS
+      // ============================================================
+
+      // Store model prediction GeoJSON
+      if (url.pathname === '/store-prediction' && request.method === 'POST') {
+        const { courseId, predictionId, geojson } = await request.json() as {
+          courseId: string;
+          predictionId?: string;
+          geojson: object;
+        };
+
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const id = predictionId || `prediction_${timestamp}`;
+        const key = `${courseId}/model_predictions/${id}.geojson`;
+
+        await env.TILES_BUCKET.put(key, JSON.stringify(geojson, null, 2), {
+          httpMetadata: { contentType: 'application/geo+json' },
+          customMetadata: {
+            courseId,
+            predictionId: id,
+            createdAt: new Date().toISOString(),
+          },
+        });
+
+        return Response.json({ 
+          success: true, 
+          key,
+          predictionId: id,
+          url: `${url.origin}/prediction/${courseId}/${id}.geojson`
+        }, { headers: CORS });
+      }
+
+      // Get model prediction
+      if (url.pathname.match(/^\/prediction\/[\w-]+\/[\w-]+\.geojson$/)) {
+        const pathParts = url.pathname.replace('/prediction/', '').split('/');
+        const courseId = pathParts[0];
+        const filename = pathParts[1];
+        const key = `${courseId}/model_predictions/${filename}`;
+
+        const object = await env.TILES_BUCKET.get(key);
+
+        if (!object) {
+          return Response.json({ error: 'Prediction not found' }, { status: 404, headers: CORS });
+        }
+
+        return new Response(object.body, {
+          headers: {
+            ...CORS,
+            'Content-Type': 'application/geo+json',
+            'Cache-Control': 'public, max-age=3600',
+            'ETag': object.etag,
+          },
+        });
+      }
+
+      // List predictions for a course
+      if (url.pathname === '/list-predictions' && request.method === 'POST') {
+        const { courseId } = await request.json() as { courseId: string };
+
+        const prefix = `${courseId}/model_predictions/`;
+        const listed = await env.TILES_BUCKET.list({ prefix, limit: 100 });
+
+        const predictions = listed.objects.map(obj => ({
+          key: obj.key,
+          filename: obj.key.replace(prefix, ''),
+          size: obj.size,
+          uploaded: obj.uploaded,
+          url: `${url.origin}/prediction/${courseId}/${obj.key.replace(prefix, '')}`,
+        }));
+
+        return Response.json({ predictions, truncated: listed.truncated }, { headers: CORS });
+      }
+
+      // Delete prediction
+      if (url.pathname === '/delete-prediction' && request.method === 'DELETE') {
+        const { courseId, predictionId } = await request.json() as {
+          courseId: string;
+          predictionId: string;
+        };
+
+        const key = `${courseId}/model_predictions/${predictionId}.geojson`;
+        await env.TILES_BUCKET.delete(key);
+
+        return Response.json({ success: true, key }, { headers: CORS });
+      }
+
       return Response.json({ error: 'Not found' }, { status: 404, headers: CORS });
     } catch (error) {
       console.error('Worker error:', error);

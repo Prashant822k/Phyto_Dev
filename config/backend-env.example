@@ -1,13 +1,18 @@
 # BACKEND ENVIRONMENT VARIABLES (.env in supabase/functions/ folder)
 # These contain sensitive keys and are NOT exposed to the client
+# Copy this file to supabase/functions/.env and fill in your values
 
 # Supabase Configuration (Backend)
 SUPABASE_URL=your_supabase_project_url
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+SUPABASE_ANON_KEY=your_supabase_anon_key
 
 # Cloudflare R2 Configuration (Backend only - sensitive)
-# Cloudflare R2 Configuration (not used in this project)
+CLOUDFLARE_R2_ACCOUNT_ID=your_account_id
+CLOUDFLARE_R2_ACCESS_KEY_ID=your_access_key_id
+CLOUDFLARE_R2_SECRET_ACCESS_KEY=your_secret_key
+CLOUDFLARE_R2_BUCKET_NAME=phyto-tiles
+CLOUDFLARE_R2_PUBLIC_DOMAIN=your_r2_public_domain.r2.dev
 
-# ML Model API Configuration (for production)
-# ML_API_URL=your_ml_model_endpoint
-# ML_API_KEY=your_ml_api_key
+# Hugging Face Space URL (optional - has default)
+HF_SPACE_URL=https://prashant822k-phyto-golf-segmentation.hf.space

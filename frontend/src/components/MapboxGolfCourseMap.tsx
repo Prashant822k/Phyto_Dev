@@ -217,7 +217,9 @@ const MapboxGolfCourseMap = ({
         console.log('Map loaded successfully');
         setMapReady(true);
         
+        console.log('onMapReady callback:', !!onMapReady, 'map.current:', !!map.current);
         if (onMapReady && map.current) {
+          console.log('Calling onMapReady callback');
           onMapReady(map.current);
         }
       });
